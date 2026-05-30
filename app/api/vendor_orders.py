@@ -1,5 +1,6 @@
 from datetime import date, datetime
 from typing import Annotated, Optional
+from uuid import UUID
 from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -59,7 +60,7 @@ async def get_vendor_orders(
 # GET /vendor/orders/vendor/{vendor_id}
 @router.get("/vendor/{vendor_id}")
 async def get_vendor_orders_by_vendor_id(
-    vendor_id: int,
+    vendor_id: UUID,
     user: Annotated[dict, Depends(get_current_user)],
     svc: OrderService = Depends(get_service),
     range: Optional[str] = Query(default=None),
@@ -95,7 +96,7 @@ async def get_vendor_orders_by_vendor_id(
 # PATCH /vendor/orders/{order_id}/reject
 @router.patch("/{order_id}/reject", response_model=Order)
 async def reject_vendor_order(
-    order_id: str,
+    order_id: UUID,
     user: Annotated[dict, Depends(get_current_user)],
     svc: OrderService = Depends(get_service),
 ):

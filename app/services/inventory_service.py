@@ -1,6 +1,7 @@
 from datetime import date, timedelta, datetime, timezone
 
 from fastapi import HTTPException
+from uuid import UUID
 
 from app.db import redis as rdb_mod
 from app.repositories.inventory_repository import InventoryRepository
@@ -10,7 +11,7 @@ class InventoryService:
     def __init__(self):
         self.repo = InventoryRepository()
 
-    async def get_inventory(self, menu_id: int, target_date: date) -> int:
+    async def get_inventory(self, menu_id: UUID, target_date: date) -> int:
         """Returns remaining stock. Checks Redis first (Cache-aside pattern)."""
         date_str = target_date.isoformat()
         rdb = rdb_mod.get_redis()
@@ -29,7 +30,7 @@ class InventoryService:
         await rdb.set(key, inv.remaining_quantity, ex=600)  # 10-min TTL
         return inv.remaining_quantity
 
-    async def set_inventory(self, menu_id: int, target_date: date, qty: int) -> None:
+    async def set_inventory(self, menu_id: UUID, target_date: date, qty: int) -> None:
         """Upsert stock in DB and warm Redis (called by vendor/admin)."""
         await self.repo.upsert(menu_id, target_date, qty)
 

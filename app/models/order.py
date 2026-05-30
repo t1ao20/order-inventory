@@ -1,6 +1,7 @@
 from datetime import date, datetime
 from enum import Enum
 from typing import Optional
+from uuid import UUID
 
 from pydantic import BaseModel, Field
 
@@ -15,10 +16,10 @@ class OrderStatus(str, Enum):
 # ── DB record ─────────────────────────────────────────────────
 
 class Order(BaseModel):
-    id: str
+    id: UUID
     employee_id: int
-    vendor_id: int
-    menu_id: int
+    vendor_id: UUID
+    menu_id: UUID
     menu_name: str          # price snapshot
     price_snapshot: int     # unit price in cents
     quantity: int
@@ -34,7 +35,7 @@ class Order(BaseModel):
 
 class DailyInventory(BaseModel):
     id: int
-    menu_id: int
+    menu_id: UUID
     target_date: date
     remaining_quantity: int
 
@@ -42,8 +43,8 @@ class DailyInventory(BaseModel):
 # ── Request schemas ────────────────────────────────────────────
 
 class PlaceOrderRequest(BaseModel):
-    vendor_id: int
-    menu_id: int
+    vendor_id: UUID
+    menu_id: UUID
     menu_name: str
     price: int = Field(..., description="Unit price in cents", gt=0)
     quantity: int = Field(1, ge=1)
@@ -69,10 +70,10 @@ class UpdateOrderQuantityRequest(BaseModel):
 
 class OrderEvent(BaseModel):
     event: str
-    order_id: str
+    order_id: UUID
     employee_id: int
-    vendor_id: int = 0
-    menu_id: int
+    vendor_id: Optional[UUID] = None
+    menu_id: UUID
     menu_name: str = ""
     price: int = 0
     quantity: int = 1

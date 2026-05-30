@@ -1,5 +1,6 @@
 from datetime import date
 from typing import Optional
+from uuid import UUID
 
 from app.db.postgres import get_pool
 from app.models.order import DailyInventory
@@ -7,7 +8,7 @@ from app.models.order import DailyInventory
 
 class InventoryRepository:
 
-    async def get(self, menu_id: int, target_date: date) -> Optional[DailyInventory]:
+    async def get(self, menu_id: UUID, target_date: date) -> Optional[DailyInventory]:
         pool = get_pool()
         row = await pool.fetchrow(
             "SELECT id, menu_id, target_date, remaining_quantity FROM daily_inventory "
@@ -16,7 +17,7 @@ class InventoryRepository:
         )
         return DailyInventory(**dict(row)) if row else None
 
-    async def decrement(self, menu_id: int, target_date: date, qty: int = 1) -> None:
+    async def decrement(self, menu_id: UUID, target_date: date, qty: int = 1) -> None:
         pool = get_pool()
         await pool.execute(
             """
@@ -27,7 +28,7 @@ class InventoryRepository:
             qty, menu_id, target_date,
         )
 
-    async def increment(self, menu_id: int, target_date: date, qty: int = 1) -> None:
+    async def increment(self, menu_id: UUID, target_date: date, qty: int = 1) -> None:
         pool = get_pool()
         await pool.execute(
             """
@@ -38,7 +39,7 @@ class InventoryRepository:
             qty, menu_id, target_date,
         )
 
-    async def upsert(self, menu_id: int, target_date: date, qty: int) -> None:
+    async def upsert(self, menu_id: UUID, target_date: date, qty: int) -> None:
         pool = get_pool()
         await pool.execute(
             """

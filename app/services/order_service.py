@@ -2,6 +2,7 @@ import time
 import uuid
 from datetime import date, datetime, time as dt_time, timedelta, timezone
 from typing import Optional
+from uuid import UUID
 from zoneinfo import ZoneInfo
 
 from fastapi import HTTPException, status
@@ -45,7 +46,7 @@ class OrderService:
         reserved_qty = await self._reserve_inventory(req.menu_id, target_date, req.quantity)
 
         # Step 2: Build order
-        order_id = str(uuid.uuid4())
+        order_id = uuid.uuid4()
         now = datetime.now(timezone.utc)
         order = Order(
             id=order_id,
@@ -89,10 +90,10 @@ class OrderService:
             await rdb.delete(rdb_mod.order_status_key(order_id))
             raise HTTPException(status_code=500, detail=f"Queue error: {e}")
 
-        return {"order_id": order_id, "status": "pending", "message": "order queued"}
+        return {"order_id": str(order_id), "status": "pending", "message": "order queued"}
 
     # ── Cancel Order ───────────────────────────────────────────
-    async def cancel_order(self, order_id: str, employee_id: int) -> None:
+    async def cancel_order(self, order_id: UUID, employee_id: int) -> None:
         order = await self.order_repo.get_by_id(order_id)
         if not order:
             raise HTTPException(status_code=404, detail="Order not found")
@@ -127,7 +128,7 @@ class OrderService:
         await mq_mod.publish(ORDER_CANCELLED, event.model_dump())
 
     # ── Get Order ──────────────────────────────────────────────
-    async def get_order(self, order_id: str, employee_id: int) -> Order:
+    async def get_order(self, order_id: UUID, employee_id: int) -> Order:
         order = await self.order_repo.get_by_id(order_id)
         if not order:
             raise HTTPException(status_code=404, detail="Order not found")
@@ -136,7 +137,7 @@ class OrderService:
 
         return await self._overlay_live_status(order)
 
-    async def get_order_for_actor(self, order_id: str, actor: dict) -> Order:
+    async def get_order_for_actor(self, order_id: UUID, actor: dict) -> Order:
         order = await self.order_repo.get_by_id(order_id)
         if not order:
             raise HTTPException(status_code=404, detail="Order not found")
@@ -152,7 +153,7 @@ class OrderService:
 
         return await self._overlay_live_status(order)
 
-    async def update_order(self, order_id: str, actor: dict, payload: UpdateOrderRequest) -> Order:
+    async def update_order(self, order_id: UUID, actor: dict, payload: UpdateOrderRequest) -> Order:
         order = await self.order_repo.get_by_id(order_id)
         if not order:
             raise HTTPException(status_code=404, detail="Order not found")
@@ -190,7 +191,7 @@ class OrderService:
 
         return await self.get_order_for_actor(order_id, actor)
 
-    async def update_order_quantity(self, order_id: str, employee_id: int, quantity: int) -> Order:
+    async def update_order_quantity(self, order_id: UUID, employee_id: int, quantity: int) -> Order:
         order = await self.order_repo.get_by_id(order_id)
         if not order:
             raise HTTPException(status_code=404, detail="Order not found")
@@ -239,7 +240,7 @@ class OrderService:
     
 # For Vendor APIs
 
-    async def get_vendor_order(self, order_id: str, vendor_id: int) -> Order:
+    async def get_vendor_order(self, order_id: UUID, vendor_id: UUID) -> Order:
         order = await self.order_repo.get_by_id(order_id)
         if not order:
             raise HTTPException(status_code=404, detail="Order not found")
@@ -250,7 +251,7 @@ class OrderService:
 
     async def get_vendor_orders(
         self,
-        vendor_id: int,
+        vendor_id: UUID,
         from_date: Optional[date],
         to_date: Optional[date],
         status: Optional[str] = None,
@@ -263,14 +264,14 @@ class OrderService:
 
     async def get_vendor_orders_by_vendor_id(
         self,
-        vendor_id: int,
+        vendor_id: UUID,
         from_date: Optional[date],
         to_date: Optional[date],
         status: Optional[str] = None,
     ) -> list[Order]:
         return await self.get_vendor_orders(vendor_id, from_date, to_date, status=status)
 
-    async def cancel_vendor_order(self, order_id: str, vendor_id: int) -> None:
+    async def cancel_vendor_order(self, order_id: UUID, vendor_id: UUID) -> None:
         order = await self.order_repo.get_by_id(order_id)
         if not order:
             raise HTTPException(status_code=404, detail="Order not found")
@@ -301,15 +302,15 @@ class OrderService:
         )
         await mq_mod.publish(ORDER_CANCELLED, event.model_dump())
 
-    async def reject_vendor_order(self, order_id: str, vendor_id: int) -> Order:
+    async def reject_vendor_order(self, order_id: UUID, vendor_id: UUID) -> Order:
         await self.cancel_vendor_order(order_id, vendor_id)
         return await self.get_vendor_order(order_id, vendor_id)
 
-    async def get_vendor_orders_today(self, vendor_id: int) -> list[Order]:
+    async def get_vendor_orders_today(self, vendor_id: UUID) -> list[Order]:
         orders = await self.order_repo.list_today_by_vendor(vendor_id)
         return await self._overlay_live_statuses(orders)
 
-    async def get_vendor_orders_history(self, vendor_id: int, from_dt: datetime, to_dt: datetime) -> list[Order]:
+    async def get_vendor_orders_history(self, vendor_id: UUID, from_dt: datetime, to_dt: datetime) -> list[Order]:
         orders = await self.order_repo.list_by_vendor(vendor_id, from_dt.date(), to_dt.date())
         return await self._overlay_live_statuses(orders)
 
@@ -337,7 +338,7 @@ class OrderService:
             return OrderStatus.cancelled
         raise HTTPException(status_code=400, detail="Unsupported action")
 
-    async def _cache_status(self, order_id: str, status_value: OrderStatus) -> None:
+    async def _cache_status(self, order_id: UUID, status_value: OrderStatus) -> None:
         rdb = rdb_mod.get_redis()
         await rdb.set(rdb_mod.order_status_key(order_id), status_value.value, ex=86400)
 
@@ -378,7 +379,7 @@ class OrderService:
             order.price_snapshot * quantity,
         )
 
-    async def _reserve_inventory(self, menu_id: int, target_date: str, quantity: int) -> int:
+    async def _reserve_inventory(self, menu_id: UUID, target_date: str, quantity: int) -> int:
         remaining = await rdb_mod.reserve_inventory(menu_id, target_date, quantity)
         if remaining == -2:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Inventory not found")

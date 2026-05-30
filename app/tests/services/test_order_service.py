@@ -8,17 +8,24 @@ from fastapi import HTTPException
 from app.models.order import Order, OrderStatus, PlaceOrderRequest, UpdateOrderRequest
 from app.services import order_service
 from app.services.order_service import OrderService
+from uuid import UUID
 
 
 ORDER_ID = "11111111-1111-4111-8111-111111111111"
+ORDER_UUID = UUID(ORDER_ID)
 TW_TZ = ZoneInfo("Asia/Taipei")
+
+# Test UUIDs
+VENDOR_UUID = UUID("00000000-0000-4000-8000-000000000007")
+OTHER_VENDOR_UUID = UUID("00000000-0000-4000-8000-000000000099")
+MENU_UUID = UUID("00000000-0000-4000-8000-000000000042")
 
 
 def make_order(
     *,
-    order_id: str = ORDER_ID,
+    order_id: UUID = ORDER_UUID,
     employee_id: int = 1,
-    vendor_id: int = 7,
+    vendor_id: UUID = VENDOR_UUID,
     quantity: int = 1,
     status: OrderStatus = OrderStatus.confirmed,
     pickup_date: date = date.today() + timedelta(days=2),
@@ -27,7 +34,7 @@ def make_order(
         id=order_id,
         employee_id=employee_id,
         vendor_id=vendor_id,
-        menu_id=42,
+        menu_id=MENU_UUID,
         menu_name="Lunch Box",
         price_snapshot=120,
         quantity=quantity,
@@ -68,7 +75,7 @@ class FakeOrderRepository:
         self.list_by_vendor_call = None
         self.list_today_by_vendor_call = None
 
-    async def get_by_id(self, order_id: str):
+    async def get_by_id(self, order_id: UUID):
         return self.order
 
     async def get_today_order(self, employee_id: int):
@@ -81,26 +88,26 @@ class FakeOrderRepository:
             return self.employee_orders
         return [self.order] if self.order is not None else []
 
-    async def list_by_vendor(self, vendor_id: int, from_dt: datetime, to_dt: datetime):
+    async def list_by_vendor(self, vendor_id: UUID, from_dt: datetime, to_dt: datetime):
         self.list_by_vendor_call = (vendor_id, from_dt, to_dt)
         if self.vendor_orders is not None:
             return self.vendor_orders
         return [self.order] if self.order is not None else []
 
-    async def list_today_by_vendor(self, vendor_id: int):
+    async def list_today_by_vendor(self, vendor_id: UUID):
         self.list_today_by_vendor_call = vendor_id
         if self.vendor_orders is not None:
             return self.vendor_orders
         return [self.order] if self.order is not None else []
 
-    async def update_status(self, order_id: str, status: OrderStatus):
-        self.update_status_call = (order_id, status)
+    async def update_status(self, order_id: UUID, status: OrderStatus):
+        self.update_status_call = (str(order_id), status)
         if self.order:
             self.order.status = status
         return True
 
-    async def update_quantity(self, order_id: str, quantity: int, total_price: int):
-        self.update_quantity_call = (order_id, quantity, total_price)
+    async def update_quantity(self, order_id: UUID, quantity: int, total_price: int):
+        self.update_quantity_call = (str(order_id), quantity, total_price)
         if self.order:
             self.order.quantity = quantity
             self.order.total_price = total_price
@@ -112,10 +119,10 @@ class FakeInventoryRepository:
         self.increment_call = None
         self.decrement_call = None
 
-    async def decrement(self, menu_id: int, target_date: date, qty: int):
+    async def decrement(self, menu_id: UUID, target_date: date, qty: int):
         self.decrement_call = (menu_id, target_date, qty)
 
-    async def increment(self, menu_id: int, target_date: date, qty: int):
+    async def increment(self, menu_id: UUID, target_date: date, qty: int):
         self.increment_call = (menu_id, target_date, qty)
 
 
@@ -135,8 +142,8 @@ def test_create_order_raises_conflict_when_out_of_stock(monkeypatch):
     # arrange: an order service and Redis inventory decrement returning sold out
     svc = OrderService()
     req = PlaceOrderRequest(
-        vendor_id=7,
-        menu_id=42,
+        vendor_id=VENDOR_UUID,
+        menu_id=MENU_UUID,
         menu_name="Lunch Box",
         price=120,
         quantity=2,
@@ -157,8 +164,8 @@ def test_create_order_success_persists_pending_state_and_publishes(monkeypatch):
     # arrange: an order service with stock available and a fake Redis cache
     svc = OrderService()
     req = PlaceOrderRequest(
-        vendor_id=7,
-        menu_id=42,
+        vendor_id=VENDOR_UUID,
+        menu_id=MENU_UUID,
         menu_name="Lunch Box",
         price=120,
         quantity=2,
@@ -185,20 +192,20 @@ def test_create_order_success_persists_pending_state_and_publishes(monkeypatch):
     }
     assert rdb.set_calls == [("order:today:12345678-1234-4123-8123-123456789abc", "pending", 86400)]
     assert publish_calls[0][0] == order_service.ORDER_CREATED
-    assert publish_calls[0][1]["order_id"] == "12345678-1234-4123-8123-123456789abc"
+    assert str(publish_calls[0][1]["order_id"]) == "12345678-1234-4123-8123-123456789abc"
     assert publish_calls[0][1]["employee_id"] == 9
-    assert publish_calls[0][1]["vendor_id"] == 7
+    assert publish_calls[0][1]["vendor_id"] == VENDOR_UUID
     assert publish_calls[0][1]["quantity"] == 2
     assert publish_calls[0][1]["pickup_date"] == req.pickup_date.isoformat()
-    assert reserve_calls == [(42, req.pickup_date.isoformat(), 2)]
+    assert reserve_calls == [(MENU_UUID, req.pickup_date.isoformat(), 2)]
 
 
 def test_create_order_rolls_back_when_queue_publish_fails(monkeypatch):
     # arrange: an order service with stock available and a broken RabbitMQ publish
     svc = OrderService()
     req = PlaceOrderRequest(
-        vendor_id=7,
-        menu_id=42,
+        vendor_id=VENDOR_UUID,
+        menu_id=MENU_UUID,
         menu_name="Lunch Box",
         price=120,
         quantity=2,
@@ -224,8 +231,8 @@ def test_create_order_rolls_back_when_queue_publish_fails(monkeypatch):
     # assert: stock should be rolled back, cache cleared, and a 500 returned
     assert exc_info.value.status_code == 500
     assert "Queue error: queue down" in exc_info.value.detail
-    assert incr_calls == [(42, req.pickup_date.isoformat()), (42, req.pickup_date.isoformat())]
-    assert reserve_calls == [(42, req.pickup_date.isoformat(), 2)]
+    assert incr_calls == [(MENU_UUID, req.pickup_date.isoformat()), (MENU_UUID, req.pickup_date.isoformat())]
+    assert reserve_calls == [(MENU_UUID, req.pickup_date.isoformat(), 2)]
     assert rdb.delete_calls == ["order:today:abcdefab-cdef-4abc-8def-abcdefabcdef"]
 
 
@@ -234,8 +241,8 @@ def test_create_order_rejects_after_deadline():
     svc = OrderService()
     svc._now = lambda: datetime(2026, 5, 26, 17, 1, tzinfo=TW_TZ)
     req = PlaceOrderRequest(
-        vendor_id=7,
-        menu_id=42,
+        vendor_id=VENDOR_UUID,
+        menu_id=MENU_UUID,
         menu_name="Lunch Box",
         price=120,
         quantity=1,
@@ -284,11 +291,11 @@ def test_get_order_for_actor_allows_matching_vendor(monkeypatch):
     monkeypatch.setattr(order_service.rdb_mod, "get_redis", lambda: FakeRedis(cached=None))
 
     # act: get the order as the matching vendor
-    result = asyncio.run(svc.get_order_for_actor(ORDER_ID, {"user_id": 7, "role": "vendor"}))
+    result = asyncio.run(svc.get_order_for_actor(ORDER_UUID, {"user_id": VENDOR_UUID, "role": "vendor"}))
 
     # assert: result should be the vendor order
-    assert result.id == ORDER_ID
-    assert result.vendor_id == 7
+    assert result.id == ORDER_UUID
+    assert result.vendor_id == VENDOR_UUID
 
 
 def test_get_order_allows_matching_employee(monkeypatch):
@@ -298,10 +305,10 @@ def test_get_order_allows_matching_employee(monkeypatch):
     monkeypatch.setattr(order_service.rdb_mod, "get_redis", lambda: FakeRedis(cached=None))
 
     # act: get the order as the matching employee
-    result = asyncio.run(svc.get_order(ORDER_ID, employee_id=1))
+    result = asyncio.run(svc.get_order(ORDER_UUID, employee_id=1))
 
     # assert: result should be the employee order
-    assert result.id == ORDER_ID
+    assert result.id == ORDER_UUID
     assert result.employee_id == 1
 
 
@@ -312,7 +319,7 @@ def test_get_order_rejects_wrong_employee():
 
     # act: get the order as another employee
     with pytest.raises(HTTPException) as exc_info:
-        asyncio.run(svc.get_order(ORDER_ID, employee_id=1))
+        asyncio.run(svc.get_order(ORDER_UUID, employee_id=1))
 
     # assert: response should be a 403 ownership error
     assert exc_info.value.status_code == 403
@@ -322,11 +329,11 @@ def test_get_order_rejects_wrong_employee():
 def test_get_order_for_actor_rejects_wrong_vendor():
     # arrange: an order service with an order owned by a different vendor
     svc = OrderService()
-    svc.order_repo = FakeOrderRepository(order=make_order(vendor_id=7))
+    svc.order_repo = FakeOrderRepository(order=make_order(vendor_id=VENDOR_UUID))
 
     # act: get the order as another vendor
     with pytest.raises(HTTPException) as exc_info:
-        asyncio.run(svc.get_order_for_actor(ORDER_ID, {"user_id": 99, "role": "vendor"}))
+        asyncio.run(svc.get_order_for_actor(ORDER_UUID, {"user_id": 99, "role": "vendor"}))
 
     # assert: response should be a 403 ownership error
     assert exc_info.value.status_code == 403
@@ -364,15 +371,15 @@ def test_get_today_order_raises_not_found():
 def test_get_vendor_order_allows_matching_vendor(monkeypatch):
     # arrange: an order service with a vendor-owned order and no cached override
     svc = OrderService()
-    svc.order_repo = FakeOrderRepository(order=make_order(vendor_id=7))
+    svc.order_repo = FakeOrderRepository(order=make_order(vendor_id=VENDOR_UUID))
     monkeypatch.setattr(order_service.rdb_mod, "get_redis", lambda: FakeRedis(cached=None))
 
     # act: get the order as the matching vendor
-    result = asyncio.run(svc.get_vendor_order(ORDER_ID, vendor_id=7))
+    result = asyncio.run(svc.get_vendor_order(ORDER_UUID, vendor_id=VENDOR_UUID))
 
     # assert: result should be the vendor order
-    assert result.id == ORDER_ID
-    assert result.vendor_id == 7
+    assert result.id == ORDER_UUID
+    assert result.vendor_id == VENDOR_UUID
 
 
 def test_get_orders_history_returns_employee_orders():
@@ -405,7 +412,7 @@ def test_cancel_order_updates_status_inventory_and_cache(monkeypatch):
     monkeypatch.setattr(order_service.mq_mod, "publish", lambda routing_key, payload: asyncio.sleep(0, result=publish_calls.append((routing_key, payload))))
 
     # act: cancel the order
-    asyncio.run(svc.cancel_order(ORDER_ID, employee_id=1))
+    asyncio.run(svc.cancel_order(ORDER_UUID, employee_id=1))
 
     # assert: status, Redis cache, and publish event should be updated
     assert svc.order_repo.update_status_call == (ORDER_ID, OrderStatus.cancelled)
@@ -413,7 +420,7 @@ def test_cancel_order_updates_status_inventory_and_cache(monkeypatch):
     assert publish_calls[0][1]["pickup_date"] == order.pickup_date.isoformat()
     assert rdb.set_calls == [(f"order:today:{ORDER_ID}", "cancelled", 86400)]
     assert publish_calls[0][0] == order_service.ORDER_CANCELLED
-    assert publish_calls[0][1]["order_id"] == ORDER_ID
+    assert str(publish_calls[0][1]["order_id"]) == ORDER_ID
 
 
 def test_cancel_order_rejects_after_deadline():
@@ -424,7 +431,7 @@ def test_cancel_order_rejects_after_deadline():
 
     # act: cancel the order after the deadline
     with pytest.raises(HTTPException) as exc_info:
-        asyncio.run(svc.cancel_order(ORDER_ID, employee_id=1))
+        asyncio.run(svc.cancel_order(ORDER_UUID, employee_id=1))
 
     # assert: response should be a 422 deadline error
     assert exc_info.value.status_code == 422
@@ -439,7 +446,7 @@ def test_update_order_quantity_rejects_after_deadline():
 
     # act: update the order quantity after the cutoff
     with pytest.raises(HTTPException) as exc_info:
-        asyncio.run(svc.update_order_quantity(ORDER_ID, employee_id=1, quantity=2))
+        asyncio.run(svc.update_order_quantity(ORDER_UUID, employee_id=1, quantity=2))
 
     # assert: response should be a 422 deadline error
     assert exc_info.value.status_code == 422
@@ -453,7 +460,7 @@ def test_cancel_order_rejects_wrong_owner():
 
     # act: cancel the order as the wrong employee
     with pytest.raises(HTTPException) as exc_info:
-        asyncio.run(svc.cancel_order(ORDER_ID, employee_id=1))
+        asyncio.run(svc.cancel_order(ORDER_UUID, employee_id=1))
 
     # assert: response should be a 403 ownership error
     assert exc_info.value.status_code == 403
@@ -467,7 +474,7 @@ def test_cancel_order_rejects_missing_order():
 
     # act: cancel a missing order
     with pytest.raises(HTTPException) as exc_info:
-        asyncio.run(svc.cancel_order(ORDER_ID, employee_id=1))
+        asyncio.run(svc.cancel_order(ORDER_UUID, employee_id=1))
 
     # assert: response should be a 404 not found error
     assert exc_info.value.status_code == 404
@@ -485,12 +492,12 @@ def test_update_order_quantity_can_decrease_inventory(monkeypatch):
     monkeypatch.setattr(order_service.rdb_mod, "incr_inventory", lambda menu_id, target_date: asyncio.sleep(0, result=1))
 
     # act: decrease the quantity from 3 to 1
-    result = asyncio.run(svc.update_order_quantity(ORDER_ID, employee_id=1, quantity=1))
+    result = asyncio.run(svc.update_order_quantity(ORDER_UUID, employee_id=1, quantity=1))
 
     # assert: inventory and repository should be adjusted downwards
     assert result.quantity == 1
     assert result.total_price == 120
-    assert svc.inventory_repo.increment_call == (42, order.pickup_date, 2)
+    assert svc.inventory_repo.increment_call == (MENU_UUID, order.pickup_date, 2)
     assert svc.order_repo.update_quantity_call == (ORDER_ID, 1, 120)
 
 
@@ -502,7 +509,7 @@ def test_update_order_quantity_noop_when_same_quantity(monkeypatch):
     monkeypatch.setattr(order_service.rdb_mod, "get_redis", lambda: FakeRedis(cached=None))
 
     # act: update with the same quantity
-    result = asyncio.run(svc.update_order_quantity(ORDER_ID, employee_id=1, quantity=2))
+    result = asyncio.run(svc.update_order_quantity(ORDER_UUID, employee_id=1, quantity=2))
 
     # assert: no inventory or repository quantity change should happen
     assert result.quantity == 2
@@ -519,7 +526,7 @@ def test_update_order_quantity_rejects_wrong_owner():
 
     # act: update the order as a different employee
     with pytest.raises(HTTPException) as exc_info:
-        asyncio.run(svc.update_order_quantity(ORDER_ID, employee_id=1, quantity=2))
+        asyncio.run(svc.update_order_quantity(ORDER_UUID, employee_id=1, quantity=2))
 
     # assert: response should be a 403 ownership error
     assert exc_info.value.status_code == 403
@@ -533,7 +540,7 @@ def test_update_order_quantity_rejects_missing_order():
 
     # act: update a missing order
     with pytest.raises(HTTPException) as exc_info:
-        asyncio.run(svc.update_order_quantity(ORDER_ID, employee_id=1, quantity=2))
+        asyncio.run(svc.update_order_quantity(ORDER_UUID, employee_id=1, quantity=2))
 
     # assert: response should be a 404 not found error
     assert exc_info.value.status_code == 404
@@ -543,11 +550,11 @@ def test_update_order_quantity_rejects_missing_order():
 def test_get_vendor_order_rejects_wrong_vendor():
     # arrange: an order service with a vendor-owned order
     svc = OrderService()
-    svc.order_repo = FakeOrderRepository(order=make_order(vendor_id=7))
+    svc.order_repo = FakeOrderRepository(order=make_order(vendor_id=VENDOR_UUID))
 
     # act: fetch the order as a different vendor
     with pytest.raises(HTTPException) as exc_info:
-        asyncio.run(svc.get_vendor_order(ORDER_ID, vendor_id=99))
+        asyncio.run(svc.get_vendor_order(ORDER_UUID, vendor_id=OTHER_VENDOR_UUID))
 
     # assert: response should be a 403 ownership error
     assert exc_info.value.status_code == 403
@@ -574,12 +581,12 @@ def test_get_vendor_orders_today_overlays_cached_status(monkeypatch):
     monkeypatch.setattr(order_service.rdb_mod, "get_redis", lambda: rdb)
 
     # act: fetch today's vendor orders
-    result = asyncio.run(svc.get_vendor_orders_today(vendor_id=7))
+    result = asyncio.run(svc.get_vendor_orders_today(vendor_id=VENDOR_UUID))
 
     # assert: cached status should be applied to the first order
     assert result[0].status == OrderStatus.cancelled
     assert result[1].status == OrderStatus.confirmed
-    assert svc.order_repo.list_today_by_vendor_call == 7
+    assert svc.order_repo.list_today_by_vendor_call == VENDOR_UUID
 
 
 def test_get_vendor_orders_history_returns_orders(monkeypatch):
@@ -592,11 +599,11 @@ def test_get_vendor_orders_history_returns_orders(monkeypatch):
     monkeypatch.setattr(order_service.rdb_mod, "get_redis", lambda: FakeRedis(cached=None))
 
     # act: fetch the vendor history
-    result = asyncio.run(svc.get_vendor_orders_history(vendor_id=7, from_dt=from_dt, to_dt=to_dt))
+    result = asyncio.run(svc.get_vendor_orders_history(vendor_id=VENDOR_UUID, from_dt=from_dt, to_dt=to_dt))
 
     # assert: repository should be called and return the same orders
     assert result == vendor_orders
-    assert svc.order_repo.list_by_vendor_call == (7, from_dt.date(), to_dt.date())
+    assert svc.order_repo.list_by_vendor_call == (VENDOR_UUID, from_dt.date(), to_dt.date())
 
 
 def test_cancel_vendor_order_updates_everything(monkeypatch):
@@ -612,25 +619,25 @@ def test_cancel_vendor_order_updates_everything(monkeypatch):
     monkeypatch.setattr(order_service.mq_mod, "publish", lambda routing_key, payload: asyncio.sleep(0, result=publish_calls.append((routing_key, payload))))
 
     # act: cancel the vendor order
-    asyncio.run(svc.cancel_vendor_order(ORDER_ID, vendor_id=7))
+    asyncio.run(svc.cancel_vendor_order(ORDER_UUID, vendor_id=VENDOR_UUID))
 
     # assert: repository, inventory, cache, and publish event should all be updated
     assert svc.order_repo.update_status_call == (ORDER_ID, OrderStatus.cancelled)
-    assert svc.inventory_repo.increment_call == (42, order.pickup_date, 1)
+    assert svc.inventory_repo.increment_call == (MENU_UUID, order.pickup_date, 1)
     assert rdb.set_calls == [(f"order:today:{ORDER_ID}", "cancelled", 86400)]
     assert publish_calls[0][0] == order_service.ORDER_CANCELLED
     assert publish_calls[0][1]["pickup_date"] == order.pickup_date.isoformat()
-    assert publish_calls[0][1]["vendor_id"] == 7
+    assert publish_calls[0][1]["vendor_id"] == VENDOR_UUID
 
 
 def test_cancel_vendor_order_rejects_wrong_vendor():
     # arrange: an order service with another vendor's order
     svc = OrderService()
-    svc.order_repo = FakeOrderRepository(order=make_order(vendor_id=7))
+    svc.order_repo = FakeOrderRepository(order=make_order(vendor_id=VENDOR_UUID))
 
     # act: cancel the vendor order as another vendor
     with pytest.raises(HTTPException) as exc_info:
-        asyncio.run(svc.cancel_vendor_order(ORDER_ID, vendor_id=99))
+        asyncio.run(svc.cancel_vendor_order(ORDER_UUID, vendor_id=OTHER_VENDOR_UUID))
 
     # assert: response should be a 403 ownership error
     assert exc_info.value.status_code == 403
@@ -644,7 +651,7 @@ def test_cancel_vendor_order_rejects_missing_order():
 
     # act: cancel a missing order
     with pytest.raises(HTTPException) as exc_info:
-        asyncio.run(svc.cancel_vendor_order(ORDER_ID, vendor_id=7))
+        asyncio.run(svc.cancel_vendor_order(ORDER_UUID, vendor_id=VENDOR_UUID))
 
     # assert: response should be a 404 not found error
     assert exc_info.value.status_code == 404
@@ -658,7 +665,7 @@ def test_cancel_vendor_order_rejects_already_cancelled():
 
     # act: cancel again
     with pytest.raises(HTTPException) as exc_info:
-        asyncio.run(svc.cancel_vendor_order(ORDER_ID, vendor_id=7))
+        asyncio.run(svc.cancel_vendor_order(ORDER_UUID, vendor_id=VENDOR_UUID))
 
     # assert: response should be a 422 already-cancelled error
     assert exc_info.value.status_code == 422
@@ -673,7 +680,7 @@ def test_cancel_vendor_order_rejects_after_deadline():
 
     # act: cancel the vendor order after the cutoff
     with pytest.raises(HTTPException) as exc_info:
-        asyncio.run(svc.cancel_vendor_order(ORDER_ID, vendor_id=7))
+        asyncio.run(svc.cancel_vendor_order(ORDER_UUID, vendor_id=VENDOR_UUID))
 
     # assert: response should be a 422 deadline error
     assert exc_info.value.status_code == 422
@@ -685,21 +692,21 @@ def test_reject_vendor_order_delegates_to_cancel_and_fetch(monkeypatch):
     svc = OrderService()
     calls = []
 
-    async def fake_cancel(order_id: str, vendor_id: int):
-        calls.append(("cancel", order_id, vendor_id))
+    async def fake_cancel(order_id: UUID, vendor_id: UUID):
+        calls.append(("cancel", str(order_id), vendor_id))
 
-    async def fake_fetch(order_id: str, vendor_id: int):
-        calls.append(("fetch", order_id, vendor_id))
+    async def fake_fetch(order_id: UUID, vendor_id: UUID):
+        calls.append(("fetch", str(order_id), vendor_id))
         return make_order(order_id=order_id, vendor_id=vendor_id, status=OrderStatus.cancelled)
 
     svc.cancel_vendor_order = fake_cancel
     svc.get_vendor_order = fake_fetch
 
     # act: reject the order
-    result = asyncio.run(svc.reject_vendor_order(ORDER_ID, vendor_id=7))
+    result = asyncio.run(svc.reject_vendor_order(ORDER_UUID, vendor_id=VENDOR_UUID))
 
     # assert: reject should call cancel first and then fetch the updated order
-    assert calls == [("cancel", ORDER_ID, 7), ("fetch", ORDER_ID, 7)]
+    assert calls == [("cancel", ORDER_ID, VENDOR_UUID), ("fetch", ORDER_ID, VENDOR_UUID)]
     assert result.status == OrderStatus.cancelled
 
 
@@ -712,7 +719,7 @@ def test_update_order_rejects_unsupported_role():
     with pytest.raises(HTTPException) as exc_info:
         asyncio.run(
             svc.update_order(
-                ORDER_ID,
+                ORDER_UUID,
                 actor={"user_id": 1, "role": "guest"},
                 payload=UpdateOrderRequest(status=OrderStatus.completed),
             )
@@ -732,7 +739,7 @@ def test_employee_update_order_rejects_non_cancel_status():
     with pytest.raises(HTTPException) as exc_info:
         asyncio.run(
             svc.update_order(
-                ORDER_ID,
+                ORDER_UUID,
                 actor={"user_id": 1, "role": "employee"},
                 payload=UpdateOrderRequest(status=OrderStatus.completed),
             )
@@ -752,8 +759,8 @@ def test_vendor_update_order_rejects_non_cancel_status():
     with pytest.raises(HTTPException) as exc_info:
         asyncio.run(
             svc.update_order(
-                ORDER_ID,
-                actor={"user_id": 7, "role": "vendor"},
+                ORDER_UUID,
+                actor={"user_id": VENDOR_UUID, "role": "vendor"},
                 payload=UpdateOrderRequest(status=OrderStatus.completed),
             )
         )
@@ -778,7 +785,7 @@ def test_admin_update_order_cancel_uses_loaded_cancel_path(monkeypatch):
     # act: cancel the order as admin
     result = asyncio.run(
         svc.update_order(
-            ORDER_ID,
+            ORDER_UUID,
             actor={"user_id": 99, "role": "admin"},
             payload=UpdateOrderRequest(status=OrderStatus.cancelled),
         )
@@ -787,7 +794,7 @@ def test_admin_update_order_cancel_uses_loaded_cancel_path(monkeypatch):
     # assert: admin cancel should use the loaded cancel path and cache cancelled
     assert result.status == OrderStatus.cancelled
     assert svc.order_repo.update_status_call == (ORDER_ID, OrderStatus.cancelled)
-    assert svc.inventory_repo.increment_call == (42, order.pickup_date, 1)
+    assert svc.inventory_repo.increment_call == (MENU_UUID, order.pickup_date, 1)
     assert rdb.set_calls == [(f"order:today:{ORDER_ID}", "cancelled", 86400)]
     assert publish_calls[0][0] == order_service.ORDER_CANCELLED
     assert publish_calls[0][1]["pickup_date"] == order.pickup_date.isoformat()
@@ -800,7 +807,7 @@ def test_get_order_for_actor_rejects_wrong_employee():
 
     # act: get the order as another employee
     with pytest.raises(HTTPException) as exc_info:
-        asyncio.run(svc.get_order_for_actor(ORDER_ID, {"user_id": 99, "role": "employee"}))
+        asyncio.run(svc.get_order_for_actor(ORDER_UUID, {"user_id": 99, "role": "employee"}))
 
     # assert: response should be a 403 ownership error
     assert exc_info.value.status_code == 403
@@ -817,7 +824,7 @@ def test_admin_update_order_can_set_non_cancelled_status(monkeypatch):
     # act: update the order as admin to completed
     result = asyncio.run(
         svc.update_order(
-            ORDER_ID,
+            ORDER_UUID,
             actor={"user_id": 99, "role": "admin"},
             payload=UpdateOrderRequest(status=OrderStatus.completed),
         )
@@ -846,7 +853,7 @@ def test_employee_update_order_can_increase_quantity(monkeypatch):
     # act: update the order quantity as the owning employee
     result = asyncio.run(
         svc.update_order(
-            ORDER_ID,
+            ORDER_UUID,
             actor={"user_id": 1, "role": "employee"},
             payload=UpdateOrderRequest(quantity=3),
         )
@@ -856,7 +863,7 @@ def test_employee_update_order_can_increase_quantity(monkeypatch):
     assert result.quantity == 3
     assert result.total_price == 360
     assert len(decr_calls) == 2
-    assert svc.inventory_repo.decrement_call == (42, order.pickup_date, 2)
+    assert svc.inventory_repo.decrement_call == (MENU_UUID, order.pickup_date, 2)
     assert svc.order_repo.update_quantity_call == (ORDER_ID, 3, 360)
 
 
@@ -871,7 +878,7 @@ def test_employee_update_order_quantity_returns_conflict_when_out_of_stock(monke
     with pytest.raises(HTTPException) as exc_info:
         asyncio.run(
             svc.update_order(
-                ORDER_ID,
+                ORDER_UUID,
                 actor={"user_id": 1, "role": "employee"},
                 payload=UpdateOrderRequest(quantity=3),
             )
@@ -899,8 +906,8 @@ def test_vendor_update_order_can_cancel_own_order(monkeypatch):
     # act: update the order as vendor to cancelled
     result = asyncio.run(
         svc.update_order(
-            ORDER_ID,
-            actor={"user_id": 7, "role": "vendor"},
+            ORDER_UUID,
+            actor={"user_id": VENDOR_UUID, "role": "vendor"},
             payload=UpdateOrderRequest(status=OrderStatus.cancelled),
         )
     )
@@ -908,8 +915,8 @@ def test_vendor_update_order_can_cancel_own_order(monkeypatch):
     # assert: repository, inventory, Redis, and RabbitMQ should receive the cancellation
     assert result.status == OrderStatus.cancelled
     assert svc.order_repo.update_status_call == (ORDER_ID, OrderStatus.cancelled)
-    assert svc.inventory_repo.increment_call == (42, order.pickup_date, 1)
+    assert svc.inventory_repo.increment_call == (MENU_UUID, order.pickup_date, 1)
     assert rdb.set_calls == [(f"order:today:{ORDER_ID}", "cancelled", 86400)]
     assert publish_calls[0][0] == order_service.ORDER_CANCELLED
-    assert publish_calls[0][1]["order_id"] == ORDER_ID
+    assert str(publish_calls[0][1]["order_id"]) == ORDER_ID
     assert publish_calls[0][1]["pickup_date"] == order.pickup_date.isoformat()

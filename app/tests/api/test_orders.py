@@ -1,6 +1,7 @@
 from datetime import date, datetime, timezone
 from contextlib import contextmanager
 from typing import Optional
+from uuid import UUID
 
 from fastapi import FastAPI, HTTPException
 from fastapi.testclient import TestClient
@@ -12,13 +13,19 @@ ORDER_ID = "11111111-1111-4111-8111-111111111111"
 OTHER_ORDER_ID = "77777777-7777-4777-8777-777777777777"
 HISTORY_ORDER_ID = "22222222-2222-4222-8222-222222222222"
 
+# Test UUIDs
+VENDOR_UUID = UUID("00000000-0000-4000-8000-000000000007")
+MENU_UUID = UUID("00000000-0000-4000-8000-000000000042")
 
-def order_payload(order_id: str = ORDER_ID, status: str = "confirmed", quantity: int = 1) -> dict:
+ORDER_UUID = UUID(ORDER_ID)
+
+
+def order_payload(order_id: UUID = ORDER_UUID, status: str = "confirmed", quantity: int = 1) -> dict:
     return {
-        "id": order_id,
+        "id": str(order_id),
         "employee_id": 1,
-        "vendor_id": 7,
-        "menu_id": 42,
+        "vendor_id": str(VENDOR_UUID),
+        "menu_id": str(MENU_UUID),
         "menu_name": "Lunch Box",
         "price_snapshot": 120,
         "quantity": quantity,
@@ -60,22 +67,22 @@ class FakeOrderService:
         self.employee_orders_call = (employee_id, from_date, to_date, status)
         return await self.get_orders(employee_id, from_date, to_date, status=status)
 
-    async def get_order_for_actor(self, order_id: str, actor: dict) -> dict:
-        self.get_order_call = (order_id, actor)
+    async def get_order_for_actor(self, order_id: UUID, actor: dict) -> dict:
+        self.get_order_call = (str(order_id), actor)
         return order_payload(order_id)
 
-    async def update_order_quantity(self, order_id: str, employee_id: int, quantity: int) -> dict:
-        self.update_quantity_call = (order_id, employee_id, quantity)
+    async def update_order_quantity(self, order_id: UUID, employee_id: int, quantity: int) -> dict:
+        self.update_quantity_call = (str(order_id), employee_id, quantity)
         updated = order_payload(order_id)
         updated["quantity"] = quantity
         updated["total_price"] = 120 * quantity
         return updated
+    async def cancel_order(self, order_id: UUID, employee_id: int) -> None:
+        self.cancel_order_call = (str(order_id), employee_id)
 
-    async def cancel_order(self, order_id: str, employee_id: int) -> None:
-        self.cancel_order_call = (order_id, employee_id)
-
-    async def reject_vendor_order(self, order_id: str, vendor_id: int) -> dict:
+    async def reject_vendor_order(self, order_id: UUID, vendor_id: UUID) -> dict:
         raise HTTPException(status_code=500, detail="not used in employee tests")
+    
 
 
 @contextmanager
@@ -101,8 +108,8 @@ def test_create_order_uses_authenticated_employee():
         response = client.post(
             "/orders",
             json={
-                "vendor_id": 7,
-                "menu_id": 42,
+                "vendor_id": str(VENDOR_UUID),
+                "menu_id": str(MENU_UUID),
                 "menu_name": "Lunch Box",
                 "price": 120,
                 "quantity": 2,
@@ -119,7 +126,7 @@ def test_create_order_uses_authenticated_employee():
             "message": "order queued",
         }
         assert employee_id == 9
-        assert req.menu_id == 42
+        assert req.menu_id == MENU_UUID
 
 
 def test_create_order_returns_conflict_when_out_of_stock():
@@ -131,8 +138,8 @@ def test_create_order_returns_conflict_when_out_of_stock():
         response = client.post(
             "/orders",
             json={
-                "vendor_id": 7,
-                "menu_id": 42,
+                "vendor_id": str(VENDOR_UUID),
+                "menu_id": str(MENU_UUID),
                 "menu_name": "Lunch Box",
                 "price": 120,
                 "quantity": 2,
@@ -145,7 +152,7 @@ def test_create_order_returns_conflict_when_out_of_stock():
         assert response.status_code == 409
         assert response.json() == {"detail": "Out of stock"}
         assert employee_id == 9
-        assert req.menu_id == 42
+        assert req.menu_id == MENU_UUID
 
 
 def test_get_me_returns_current_order():
@@ -166,7 +173,8 @@ def test_get_me_returns_current_order():
 def test_get_me_history_returns_orders_and_count():
     # arrange: an authenticated employee and a fake order service
     with make_client() as (client, service):
-        today = date.today()
+        from zoneinfo import ZoneInfo
+        today = datetime.now(ZoneInfo("Asia/Taipei")).date()
         # act: receive a GET /orders/me?range=history request
         response = client.get("/orders/me", params={"range": "history"})
 
@@ -188,7 +196,8 @@ def test_get_me_history_returns_orders_and_count():
 def test_get_me_upcoming_uses_open_ended_from_today():
     # arrange: an authenticated employee and a fake order service
     with make_client() as (client, service):
-        today = date.today()
+        from zoneinfo import ZoneInfo
+        today = datetime.now(ZoneInfo("Asia/Taipei")).date()
         # act: receive a GET /orders/me?range=upcoming request
         response = client.get("/orders/me", params={"range": "upcoming"})
 
@@ -228,7 +237,8 @@ def test_get_me_custom_range_uses_query_dates():
 def test_get_orders_by_employee_id_uses_path_employee_id():
     # arrange: an authenticated employee and a fake order service
     with make_client({"user_id": 9, "role": "employee"}) as (client, service):
-        today = date.today()
+        from zoneinfo import ZoneInfo
+        today = datetime.now(ZoneInfo("Asia/Taipei")).date()
         # act: receive a GET /orders/employee/{employee_id} request
         response = client.get("/orders/employee/3", params={"range": "history", "status": "cancelled"})
 
@@ -248,7 +258,8 @@ def test_get_orders_by_employee_id_uses_path_employee_id():
 def test_get_me_can_filter_by_status():
     # arrange: an authenticated employee and a fake order service
     with make_client() as (client, service):
-        today = date.today()
+        from zoneinfo import ZoneInfo
+        today = datetime.now(ZoneInfo("Asia/Taipei")).date()
         # act: receive a GET /orders/me request with a status filter
         response = client.get("/orders/me", params={"status": "cancelled"})
 
@@ -265,7 +276,8 @@ def test_get_me_can_filter_by_status():
 def test_get_orders_by_employee_id_can_filter_by_status():
     # arrange: an authenticated employee and a fake order service
     with make_client() as (client, service):
-        today = date.today()
+        from zoneinfo import ZoneInfo
+        today = datetime.now(ZoneInfo("Asia/Taipei")).date()
         # act: receive a GET /orders/employee/{employee_id} request with a status filter
         response = client.get("/orders/employee/3", params={"status": "confirmed"})
 
@@ -282,14 +294,14 @@ def test_get_orders_by_employee_id_can_filter_by_status():
 
 def test_get_order_uses_actor_context():
     # arrange: an authenticated vendor and a fake order service
-    with make_client({"user_id": 7, "role": "vendor"}) as (client, service):
+    with make_client({"user_id": VENDOR_UUID, "role": "vendor"}) as (client, service):
         # act: receive a GET /orders/{order_id} request
         response = client.get(f"/orders/{OTHER_ORDER_ID}")
 
         # assert: response should pass the actor context to the service
         assert response.status_code == 200
         assert response.json()["id"] == OTHER_ORDER_ID
-        assert service.get_order_call == (OTHER_ORDER_ID, {"user_id": 7, "role": "vendor"})
+        assert service.get_order_call == (OTHER_ORDER_ID, {"user_id": VENDOR_UUID, "role": "vendor"})
 
 
 def test_employee_can_cancel_own_order():

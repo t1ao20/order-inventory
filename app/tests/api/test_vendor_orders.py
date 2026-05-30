@@ -1,6 +1,7 @@
 from datetime import date, datetime, timezone
 from contextlib import contextmanager
 from typing import Optional
+from uuid import UUID
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -11,13 +12,21 @@ from app.api import vendor_orders as vendor_orders_api
 ORDER_ID = "11111111-1111-4111-8111-111111111111"
 HISTORY_ORDER_ID = "22222222-2222-4222-8222-222222222222"
 
+# Test UUIDs for orders
+ORDER_UUID = UUID(ORDER_ID)
 
-def order_payload(order_id: str = ORDER_ID, status: str = "confirmed", quantity: int = 1) -> dict:
+# Test UUIDs
+VENDOR_UUID = UUID("00000000-0000-4000-8000-000000000007")
+VENDOR_UUID_11 = UUID("00000000-0000-4000-8000-000000000011")
+MENU_UUID = UUID("00000000-0000-4000-8000-000000000042")
+
+
+def order_payload(order_id: UUID = ORDER_UUID, status: str = "confirmed", quantity: int = 1) -> dict:
     return {
-        "id": order_id,
+        "id": str(order_id),
         "employee_id": 1,
-        "vendor_id": 7,
-        "menu_id": 42,
+        "vendor_id": str(VENDOR_UUID),
+        "menu_id": str(MENU_UUID),
         "menu_name": "Lunch Box",
         "price_snapshot": 120,
         "quantity": quantity,
@@ -35,19 +44,19 @@ class FakeOrderService:
         self.vendor_orders_call = None
         self.reject_call = None
 
-    async def get_vendor_orders(self, vendor_id: int, from_date, to_date, status: Optional[str] = None) -> list[dict]:
+    async def get_vendor_orders(self, vendor_id: UUID, from_date, to_date, status: Optional[str] = None) -> list[dict]:
         self.orders_call = (vendor_id, from_date, to_date, status)
         return [
-            order_payload(order_id=ORDER_ID, status="confirmed", quantity=1),
-            order_payload(order_id=HISTORY_ORDER_ID, status="cancelled", quantity=2),
+            order_payload(order_id=ORDER_UUID, status="confirmed", quantity=1),
+            order_payload(order_id=UUID(HISTORY_ORDER_ID), status="cancelled", quantity=2),
         ]
 
-    async def get_vendor_orders_by_vendor_id(self, vendor_id: int, from_date, to_date, status: Optional[str] = None) -> list[dict]:
+    async def get_vendor_orders_by_vendor_id(self, vendor_id: UUID, from_date, to_date, status: Optional[str] = None) -> list[dict]:
         self.vendor_orders_call = (vendor_id, from_date, to_date, status)
         return await self.get_vendor_orders(vendor_id, from_date, to_date, status=status)
 
-    async def reject_vendor_order(self, order_id: str, vendor_id: int) -> dict:
-        self.reject_call = (order_id, vendor_id)
+    async def reject_vendor_order(self, order_id: UUID, vendor_id: UUID) -> dict:
+        self.reject_call = (str(order_id), vendor_id)
         return order_payload(order_id=order_id, status="cancelled")
 
 
@@ -66,8 +75,9 @@ def make_client(user: dict):
 
 def test_vendor_can_get_today_orders():
     # arrange: an authenticated vendor and a fake order service
-    with make_client({"user_id": 7, "role": "vendor"}) as (client, service):
-        today = date.today()
+    with make_client({"user_id": VENDOR_UUID, "role": "vendor"}) as (client, service):
+        from zoneinfo import ZoneInfo
+        today = datetime.now(ZoneInfo("Asia/Taipei")).date()
         # act: receive a GET /vendor/orders?range=today request
         response = client.get("/vendor/orders", params={"range": "today"})
 
@@ -77,7 +87,7 @@ def test_vendor_can_get_today_orders():
         assert response.json()["range"] == "today"
         assert response.json()["count"] == 2
         assert response.json()["orders"][0]["id"] == ORDER_ID
-        assert vendor_id == 7
+        assert vendor_id == VENDOR_UUID
         assert from_date == today
         assert to_date == today
         assert status is None
@@ -85,8 +95,9 @@ def test_vendor_can_get_today_orders():
 
 def test_admin_can_get_vendor_order_history():
     # arrange: an authenticated admin and a fake order service
-    with make_client({"user_id": 7, "role": "admin"}) as (client, service):
-        today = date.today()
+    with make_client({"user_id": VENDOR_UUID, "role": "admin"}) as (client, service):
+        from zoneinfo import ZoneInfo
+        today = datetime.now(ZoneInfo("Asia/Taipei")).date()
         # act: receive a GET /vendor/orders?range=history request
         response = client.get("/vendor/orders", params={"range": "history"})
 
@@ -99,7 +110,7 @@ def test_admin_can_get_vendor_order_history():
         assert response.json()["orders"][1]["quantity"] == 2
         assert response.json()["orders"][1]["total_price"] == 240
         assert response.json()["range"] == "history"
-        assert vendor_id == 7
+        assert vendor_id == VENDOR_UUID
         assert from_date is None
         assert to_date == today
         assert status is None
@@ -107,7 +118,7 @@ def test_admin_can_get_vendor_order_history():
 
 def test_vendor_can_get_custom_range_and_status():
     # arrange: an authenticated vendor and a fake order service
-    with make_client({"user_id": 7, "role": "vendor"}) as (client, service):
+    with make_client({"user_id": VENDOR_UUID, "role": "vendor"}) as (client, service):
         # act: receive a GET /vendor/orders request with custom filters
         response = client.get(
             "/vendor/orders",
@@ -120,7 +131,7 @@ def test_vendor_can_get_custom_range_and_status():
         assert response.json()["range"] == "custom"
         assert response.json()["status"] == "completed"
         assert response.json()["count"] == 2
-        assert vendor_id == 7
+        assert vendor_id == VENDOR_UUID
         assert from_date == date(2026, 5, 1)
         assert to_date == date(2026, 5, 31)
         assert status == "completed"
@@ -128,18 +139,20 @@ def test_vendor_can_get_custom_range_and_status():
 
 def test_vendor_can_get_orders_by_vendor_id():
     # arrange: an authenticated vendor and a fake order service
-    with make_client({"user_id": 7, "role": "vendor"}) as (client, service):
-        today = date.today()
+    with make_client({"user_id": VENDOR_UUID, "role": "vendor"}) as (client, service):
+        from zoneinfo import ZoneInfo
+        today = datetime.now(ZoneInfo("Asia/Taipei")).date()
         # act: receive a GET /vendor/orders/vendor/{vendor_id} request
-        response = client.get("/vendor/orders/vendor/11", params={"range": "today"})
+
+        response = client.get(f"/vendor/orders/vendor/{str(VENDOR_UUID_11)}", params={"range": "today"})
 
         # assert: response should use the path vendor id, not the JWT user id
         vendor_id, from_date, to_date, status = service.vendor_orders_call
         assert response.status_code == 200
-        assert response.json()["vendor_id"] == 11
+        assert response.json()["vendor_id"] == str(VENDOR_UUID_11)
         assert response.json()["range"] == "today"
         assert response.json()["count"] == 2
-        assert vendor_id == 11
+        assert vendor_id == VENDOR_UUID_11
         assert from_date == today
         assert to_date == today
         assert status is None
@@ -159,7 +172,7 @@ def test_employee_cannot_get_vendor_orders():
 
 def test_vendor_can_reject_order():
     # arrange: an authenticated vendor and a fake order service
-    with make_client({"user_id": 7, "role": "vendor"}) as (client, service):
+    with make_client({"user_id": VENDOR_UUID, "role": "vendor"}) as (client, service):
         # act: receive a PATCH /vendor/orders/{order_id}/reject request
         response = client.patch(f"/vendor/orders/{ORDER_ID}/reject")
 
@@ -167,4 +180,4 @@ def test_vendor_can_reject_order():
         assert response.status_code == 200
         assert response.json()["id"] == ORDER_ID
         assert response.json()["status"] == "cancelled"
-        assert service.reject_call == (ORDER_ID, 7)
+        assert service.reject_call == (ORDER_ID, VENDOR_UUID)

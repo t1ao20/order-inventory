@@ -3,8 +3,8 @@
 CREATE TABLE IF NOT EXISTS orders (
     id              TEXT PRIMARY KEY,
     employee_id     BIGINT       NOT NULL,
-    vendor_id       BIGINT       NOT NULL,
-    menu_id         BIGINT       NOT NULL,
+    vendor_id       UUID         NOT NULL,
+    menu_id         UUID         NOT NULL,
     menu_name       VARCHAR(255) NOT NULL,
     price_snapshot  BIGINT       NOT NULL,
     quantity        INT          NOT NULL DEFAULT 1,
@@ -21,7 +21,7 @@ CREATE INDEX IF NOT EXISTS idx_orders_employee_date ON orders (employee_id, orde
 
 CREATE TABLE IF NOT EXISTS daily_inventory (
     id                 BIGSERIAL PRIMARY KEY,
-    menu_id            BIGINT NOT NULL,
+    menu_id            UUID NOT NULL,
     target_date        DATE   NOT NULL,
     remaining_quantity INT    NOT NULL DEFAULT 0,
     UNIQUE (menu_id, target_date)

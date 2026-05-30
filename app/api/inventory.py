@@ -1,5 +1,6 @@
 from datetime import date
 from typing import Annotated
+from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
 
@@ -17,7 +18,7 @@ def get_service() -> InventoryService:
 # GET /inventory/{menu_id}?date=2026-05-22
 @router.get("/{menu_id}")
 async def get_inventory(
-    menu_id: int,
+    menu_id: UUID,
     user: Annotated[dict, Depends(get_current_user)],
     svc: InventoryService = Depends(get_service),
     target_date: date = date.today(),
@@ -29,7 +30,7 @@ async def get_inventory(
 # PUT /inventory/{menu_id}  (vendor / admin only)
 @router.put("/{menu_id}")
 async def set_inventory(
-    menu_id: int,
+    menu_id: UUID,
     req: SetInventoryRequest,
     user: Annotated[dict, Depends(get_current_user)],
     svc: InventoryService = Depends(get_service),

@@ -1,4 +1,5 @@
-from typing import Optional
+from typing import Optional, Union
+from uuid import UUID
 
 import redis.asyncio as aioredis
 from app.core.config import settings
@@ -25,14 +26,14 @@ def get_redis() -> aioredis.Redis:
 
 # ── Key helpers ────────────────────────────────────────────────
 
-def inventory_key(menu_id: int, date: str) -> str:
+def inventory_key(menu_id: Union[int, str, UUID], date: str) -> str:
     """Redis key for daily inventory: inventory:<menu_id>:<date>"""
-    return f"inventory:{menu_id}:{date}"
+    return f"inventory:{str(menu_id)}:{date}"
 
 
-def order_status_key(order_id: str) -> str:
+def order_status_key(order_id: Union[str, UUID]) -> str:
     """Redis key for live order status: order:today:<order_id>"""
-    return f"order:today:{order_id}"
+    return f"order:today:{str(order_id)}"
 
 
 def rate_limit_key(user_id: int) -> str:
@@ -81,7 +82,7 @@ return stock - qty
 """
 
 
-async def decr_inventory(menu_id: int, date: str) -> int:
+async def decr_inventory(menu_id: Union[int, str, UUID], date: str) -> int:
     """Atomically decrement inventory. Returns remaining stock, 0=sold out, -1=not set."""
     rdb = get_redis()
     key = inventory_key(menu_id, date)
@@ -89,7 +90,7 @@ async def decr_inventory(menu_id: int, date: str) -> int:
     return int(result)
 
 
-async def incr_inventory(menu_id: int, date: str) -> int:
+async def incr_inventory(menu_id: Union[int, str, UUID], date: str) -> int:
     """Atomically restore one unit (used on cancellation)."""
     rdb = get_redis()
     key = inventory_key(menu_id, date)
@@ -97,7 +98,7 @@ async def incr_inventory(menu_id: int, date: str) -> int:
     return int(result)
 
 
-async def reserve_inventory(menu_id: int, date: str, quantity: int) -> int:
+async def reserve_inventory(menu_id: Union[int, str, UUID], date: str, quantity: int) -> int:
     """Atomically reserve quantity units. Returns remaining stock, -1=not enough, -2=not set."""
     rdb = get_redis()
     key = inventory_key(menu_id, date)

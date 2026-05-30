@@ -1,5 +1,6 @@
 from datetime import date, datetime, timezone
 from typing import Optional
+from uuid import UUID
 
 import asyncpg
 
@@ -24,7 +25,7 @@ class OrderRepository:
             order.status.value, order.created_at,
         )
 
-    async def get_by_id(self, order_id: str) -> Optional[Order]:
+    async def get_by_id(self, order_id: UUID) -> Optional[Order]:
         pool = get_pool()
         row = await pool.fetchrow(
             """
@@ -36,7 +37,7 @@ class OrderRepository:
         )
         return Order(**dict(row)) if row else None
 
-    async def update_status(self, order_id: str, status: OrderStatus) -> bool:
+    async def update_status(self, order_id: UUID, status: OrderStatus) -> bool:
         pool = get_pool()
         result = await pool.execute(
             "UPDATE orders SET status = $1 WHERE id = $2",
@@ -44,7 +45,7 @@ class OrderRepository:
         )
         return result == "UPDATE 1"
 
-    async def update_quantity(self, order_id: str, quantity: int, total_price: int) -> bool:
+    async def update_quantity(self, order_id: UUID, quantity: int, total_price: int) -> bool:
         pool = get_pool()
         result = await pool.execute(
             "UPDATE orders SET quantity = $1, total_price = $2 WHERE id = $3",
@@ -75,7 +76,7 @@ class OrderRepository:
         return [Order(**dict(r)) for r in rows]
 
     async def list_by_vendor(
-        self, vendor_id: int, from_date: Optional[date], to_date: Optional[date]
+        self, vendor_id: UUID, from_date: Optional[date], to_date: Optional[date]
     ) -> list[Order]:
         pool = get_pool()
         query = (
@@ -111,7 +112,7 @@ class OrderRepository:
         )
         return Order(**dict(row)) if row else None
 
-    async def list_today_by_vendor(self, vendor_id: int) -> list[Order]:
+    async def list_today_by_vendor(self, vendor_id: UUID) -> list[Order]:
         pool = get_pool()
         rows = await pool.fetch(
             """

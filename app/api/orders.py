@@ -1,5 +1,6 @@
 from datetime import date, datetime, timedelta, timezone
 from typing import Annotated, Optional
+from uuid import UUID
 
 from zoneinfo import ZoneInfo
 
@@ -97,7 +98,7 @@ async def get_orders_by_employee_id(
 # GET /orders/{order_id}
 @router.get("/{order_id}", response_model=Order)
 async def get_order(
-    order_id: str,
+    order_id: UUID,
     user: Annotated[dict, Depends(get_current_user)],
     svc: OrderService = Depends(get_service),
 ):
@@ -107,7 +108,7 @@ async def get_order(
 # PATCH /orders/{order_id}/quantity
 @router.patch("/{order_id}/quantity", response_model=Order)
 async def update_order_quantity(
-    order_id: str,
+    order_id: UUID,
     req: UpdateOrderQuantityRequest,
     user: Annotated[dict, Depends(get_current_user)],
     svc: OrderService = Depends(get_service),
@@ -119,7 +120,7 @@ async def update_order_quantity(
 # PATCH /orders/{order_id}/cancel
 @router.patch("/{order_id}/cancel", response_model=Order)
 async def cancel_order(
-    order_id: str,
+    order_id: UUID,
     user: Annotated[dict, Depends(get_current_user)],
     svc: OrderService = Depends(get_service),
 ):
