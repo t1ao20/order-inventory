@@ -7,6 +7,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from app.api import vendor_orders as vendor_orders_api
+from app.test_time import days_from_today, tw_today, utc_now
 
 
 ORDER_ID = "11111111-1111-4111-8111-111111111111"
@@ -31,10 +32,10 @@ def order_payload(order_id: UUID = ORDER_UUID, status: str = "confirmed", quanti
         "price_snapshot": 120,
         "quantity": quantity,
         "total_price": 120 * quantity,
-        "order_date": date(2026, 5, 26),
-        "pickup_date": date(2026, 5, 27),
+        "order_date": tw_today(),
+        "pickup_date": days_from_today(8),
         "status": status,
-        "created_at": datetime(2026, 5, 26, 4, 0, tzinfo=timezone.utc),
+        "created_at": utc_now(),
     }
 
 
@@ -76,8 +77,7 @@ def make_client(user: dict):
 def test_vendor_can_get_today_orders():
     # arrange: an authenticated vendor and a fake order service
     with make_client({"user_id": VENDOR_UUID, "role": "vendor"}) as (client, service):
-        from zoneinfo import ZoneInfo
-        today = datetime.now(ZoneInfo("Asia/Taipei")).date()
+        today = tw_today()
         # act: receive a GET /vendor/orders?range=today request
         response = client.get("/vendor/orders", params={"range": "today"})
 
@@ -96,8 +96,7 @@ def test_vendor_can_get_today_orders():
 def test_admin_can_get_vendor_order_history():
     # arrange: an authenticated admin and a fake order service
     with make_client({"user_id": VENDOR_UUID, "role": "admin"}) as (client, service):
-        from zoneinfo import ZoneInfo
-        today = datetime.now(ZoneInfo("Asia/Taipei")).date()
+        today = tw_today()
         # act: receive a GET /vendor/orders?range=history request
         response = client.get("/vendor/orders", params={"range": "history"})
 
@@ -122,7 +121,7 @@ def test_vendor_can_get_custom_range_and_status():
         # act: receive a GET /vendor/orders request with custom filters
         response = client.get(
             "/vendor/orders",
-            params={"from": "2026-05-01", "to": "2026-05-31", "status": "completed"},
+            params={"from": days_from_today(-30).isoformat(), "to": tw_today().isoformat(), "status": "completed"},
         )
 
         # assert: response should include the parsed custom filters
@@ -132,16 +131,15 @@ def test_vendor_can_get_custom_range_and_status():
         assert response.json()["status"] == "completed"
         assert response.json()["count"] == 2
         assert vendor_id == VENDOR_UUID
-        assert from_date == date(2026, 5, 1)
-        assert to_date == date(2026, 5, 31)
+        assert from_date == days_from_today(-30)
+        assert to_date == tw_today()
         assert status == "completed"
 
 
 def test_vendor_can_get_orders_by_vendor_id():
     # arrange: an authenticated vendor and a fake order service
     with make_client({"user_id": VENDOR_UUID, "role": "vendor"}) as (client, service):
-        from zoneinfo import ZoneInfo
-        today = datetime.now(ZoneInfo("Asia/Taipei")).date()
+        today = tw_today()
         # act: receive a GET /vendor/orders/vendor/{vendor_id} request
 
         response = client.get(f"/vendor/orders/vendor/{str(VENDOR_UUID_11)}", params={"range": "today"})

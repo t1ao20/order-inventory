@@ -6,6 +6,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from app.api import inventory as inventory_api
+from app.test_time import days_from_today, tw_today
 
 # Test UUIDs
 MENU_UUID = UUID("00000000-0000-4000-8000-000000000042")
@@ -42,16 +43,16 @@ def test_get_inventory_returns_remaining_quantity():
     # arrange: an authenticated employee and a fake inventory service
     with make_client({"user_id": 1, "role": "employee"}) as (client, service):
         # act: receive a GET /inventory/{menu_id} request
-        response = client.get(f"/inventory/{str(MENU_UUID)}", params={"target_date": "2026-05-26"})
+        response = client.get(f"/inventory/{str(MENU_UUID)}", params={"target_date": tw_today().isoformat()})
 
         # assert: response should include the remaining inventory quantity
         assert response.status_code == 200
         assert response.json() == {
             "menu_id": str(MENU_UUID),
-            "date": "2026-05-26",
+            "date": tw_today().isoformat(),
             "remaining_quantity": 12,
         }
-        assert service.get_inventory_call == (MENU_UUID, date(2026, 5, 26))
+        assert service.get_inventory_call == (MENU_UUID, tw_today())
 
 
 def test_vendor_can_set_inventory():
@@ -60,7 +61,7 @@ def test_vendor_can_set_inventory():
         # act: receive a PUT /inventory/{menu_id} request
         response = client.put(
             f"/inventory/{str(MENU_UUID)}",
-            json={"date": "2026-05-26", "quantity": 30},
+            json={"date": days_from_today(8).isoformat(), "quantity": 30},
         )
 
         # assert: response should be status code 200 and call set_inventory
@@ -68,10 +69,10 @@ def test_vendor_can_set_inventory():
         assert response.json() == {
             "message": "inventory updated",
             "menu_id": str(MENU_UUID),
-            "date": "2026-05-26",
+            "date": days_from_today(8).isoformat(),
             "quantity": 30,
         }
-        assert service.set_inventory_call == (MENU_UUID, date(2026, 5, 26), 30)
+        assert service.set_inventory_call == (MENU_UUID, days_from_today(8), 30)
 
 def test_admin_can_set_inventory():
     # arrange: an authenticated admin and a fake inventory service
@@ -79,7 +80,7 @@ def test_admin_can_set_inventory():
         # act: receive a PUT /inventory/{menu_id} request
         response = client.put(
             f"/inventory/{str(MENU_UUID)}",
-            json={"date": "2026-05-26", "quantity": 30},
+            json={"date": days_from_today(8).isoformat(), "quantity": 30},
         )
 
         # assert: response should be status code 200 and call set_inventory
@@ -87,10 +88,10 @@ def test_admin_can_set_inventory():
         assert response.json() == {
             "message": "inventory updated",
             "menu_id": str(MENU_UUID),
-            "date": "2026-05-26",
+            "date": days_from_today(8).isoformat(),
             "quantity": 30,
         }
-        assert service.set_inventory_call == (MENU_UUID, date(2026, 5, 26), 30)
+        assert service.set_inventory_call == (MENU_UUID, days_from_today(8), 30)
 
 def test_employee_cannot_set_inventory():
     # arrange: an authenticated employee and a fake inventory service
@@ -98,7 +99,7 @@ def test_employee_cannot_set_inventory():
         # act: receive a PUT /inventory/{menu_id} request
         response = client.put(
             f"/inventory/{str(MENU_UUID)}",
-            json={"date": "2026-05-26", "quantity": 30},
+            json={"date": days_from_today(8).isoformat(), "quantity": 30},
         )
 
         # assert: response should be status code 403 and not call set_inventory

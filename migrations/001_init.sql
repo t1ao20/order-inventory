@@ -23,6 +23,8 @@ CREATE TABLE IF NOT EXISTS daily_inventory (
     id                 BIGSERIAL PRIMARY KEY,
     menu_id            UUID NOT NULL,
     target_date        DATE   NOT NULL,
+    max_quantity       INT    NOT NULL DEFAULT 0,
+    sold_quantity      INT    NOT NULL DEFAULT 0,
     remaining_quantity INT    NOT NULL DEFAULT 0,
     UNIQUE (menu_id, target_date)
 );

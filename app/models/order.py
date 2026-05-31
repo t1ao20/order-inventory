@@ -37,6 +37,8 @@ class DailyInventory(BaseModel):
     id: int
     menu_id: UUID
     target_date: date
+    max_quantity: int
+    sold_quantity: int
     remaining_quantity: int
 
 

@@ -8,3 +8,6 @@ reports/coverage/
 .venv/
 .env
 .vscode/
+# Local secrets and infra config - don't commit
+kong.yml
+test.pem

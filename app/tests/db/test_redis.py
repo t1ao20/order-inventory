@@ -4,6 +4,7 @@ from uuid import UUID
 import pytest
 
 from app.db import redis as redis_mod
+from app.test_time import tw_today
 
 
 class FakeRedis:
@@ -19,13 +20,13 @@ class FakeRedis:
 def test_inventory_key_formats_menu_and_date():
     # arrange: a menu id and date string
     menu_id = UUID("00000000-0000-4000-8000-000000000042")
-    target_date = "2026-05-26"
+    target_date = tw_today().isoformat()
 
     # act: build the Redis inventory key
     result = redis_mod.inventory_key(menu_id, target_date)
 
     # assert: key should include menu id and date
-    assert result == f"inventory:{str(menu_id)}:2026-05-26"
+    assert result == f"inventory:{str(menu_id)}:{target_date}"
 
 
 def test_order_status_key_formats_order_id():
@@ -69,11 +70,12 @@ def test_decr_inventory_runs_lua_against_inventory_key(monkeypatch):
 
     # act: decrement inventory through the Redis helper
     menu_id = UUID("00000000-0000-4000-8000-000000000042")
-    result = asyncio.run(redis_mod.decr_inventory(menu_id, "2026-05-26"))
+    target_date = tw_today().isoformat()
+    result = asyncio.run(redis_mod.decr_inventory(menu_id, target_date))
 
     # assert: result should be converted to int and use the inventory key
     assert result == 5
-    assert rdb.eval_call == (redis_mod.DECR_INVENTORY_SCRIPT, 1, f"inventory:{str(menu_id)}:2026-05-26")
+    assert rdb.eval_call == (redis_mod.DECR_INVENTORY_SCRIPT, 1, f"inventory:{str(menu_id)}:{target_date}")
 
 
 def test_incr_inventory_runs_lua_against_inventory_key(monkeypatch):
@@ -83,8 +85,9 @@ def test_incr_inventory_runs_lua_against_inventory_key(monkeypatch):
 
     # act: increment inventory through the Redis helper
     menu_id = UUID("00000000-0000-4000-8000-000000000042")
-    result = asyncio.run(redis_mod.incr_inventory(menu_id, "2026-05-26"))
+    target_date = tw_today().isoformat()
+    result = asyncio.run(redis_mod.incr_inventory(menu_id, target_date))
 
     # assert: result should be converted to int and use the inventory key
     assert result == 6
-    assert rdb.eval_call == (redis_mod.INCR_INVENTORY_SCRIPT, 1, f"inventory:{str(menu_id)}:2026-05-26")
+    assert rdb.eval_call == (redis_mod.INCR_INVENTORY_SCRIPT, 1, f"inventory:{str(menu_id)}:{target_date}")

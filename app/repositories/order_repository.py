@@ -126,3 +126,19 @@ class OrderRepository:
             vendor_id,
         )
         return [Order(**dict(r)) for r in rows]
+
+    async def list_confirmed_by_menu_and_date(self, menu_id: UUID, target_date: date) -> list[Order]:
+        pool = get_pool()
+        rows = await pool.fetch(
+            """
+            SELECT id, employee_id, vendor_id, menu_id, menu_name, price_snapshot,
+                   quantity, total_price, order_date, pickup_date, status, created_at
+            FROM orders
+            WHERE menu_id = $1
+              AND pickup_date = $2
+              AND status = 'confirmed'
+            ORDER BY created_at DESC, id DESC
+            """,
+            menu_id, target_date,
+        )
+        return [Order(**dict(r)) for r in rows]

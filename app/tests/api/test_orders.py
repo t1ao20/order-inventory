@@ -7,6 +7,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.testclient import TestClient
 
 from app.api import orders as orders_api
+from app.test_time import days_from_today, tw_today, utc_now
 
 
 ORDER_ID = "11111111-1111-4111-8111-111111111111"
@@ -30,10 +31,10 @@ def order_payload(order_id: UUID = ORDER_UUID, status: str = "confirmed", quanti
         "price_snapshot": 120,
         "quantity": quantity,
         "total_price": 120 * quantity,
-        "order_date": date(2026, 5, 26),
-        "pickup_date": date(2026, 5, 27),
+        "order_date": tw_today(),
+        "pickup_date": days_from_today(8),
         "status": status,
-        "created_at": datetime(2026, 5, 26, 4, 0, tzinfo=timezone.utc),
+        "created_at": utc_now(),
     }
 
 
@@ -113,7 +114,7 @@ def test_create_order_uses_authenticated_employee():
                 "menu_name": "Lunch Box",
                 "price": 120,
                 "quantity": 2,
-                "pickup_date": "2026-05-27",
+                "pickup_date": days_from_today(8).isoformat(),
             },
         )
 
@@ -143,7 +144,7 @@ def test_create_order_returns_conflict_when_out_of_stock():
                 "menu_name": "Lunch Box",
                 "price": 120,
                 "quantity": 2,
-                "pickup_date": "2026-05-27",
+                "pickup_date": days_from_today(8).isoformat(),
             },
         )
 
@@ -173,8 +174,7 @@ def test_get_me_returns_current_order():
 def test_get_me_history_returns_orders_and_count():
     # arrange: an authenticated employee and a fake order service
     with make_client() as (client, service):
-        from zoneinfo import ZoneInfo
-        today = datetime.now(ZoneInfo("Asia/Taipei")).date()
+        today = tw_today()
         # act: receive a GET /orders/me?range=history request
         response = client.get("/orders/me", params={"range": "history"})
 
@@ -196,8 +196,7 @@ def test_get_me_history_returns_orders_and_count():
 def test_get_me_upcoming_uses_open_ended_from_today():
     # arrange: an authenticated employee and a fake order service
     with make_client() as (client, service):
-        from zoneinfo import ZoneInfo
-        today = datetime.now(ZoneInfo("Asia/Taipei")).date()
+        today = tw_today()
         # act: receive a GET /orders/me?range=upcoming request
         response = client.get("/orders/me", params={"range": "upcoming"})
 
@@ -219,7 +218,7 @@ def test_get_me_custom_range_uses_query_dates():
         # act: receive a GET /orders/me request with custom date bounds
         response = client.get(
             "/orders/me",
-            params={"from": "2026-05-01", "to": "2026-05-31", "status": "confirmed"},
+            params={"from": days_from_today(-30).isoformat(), "to": tw_today().isoformat(), "status": "confirmed"},
         )
 
         # assert: response should include the parsed custom date range
@@ -229,16 +228,15 @@ def test_get_me_custom_range_uses_query_dates():
         assert response.json()["count"] == 2
         assert response.json()["status"] == "confirmed"
         assert employee_id == 1
-        assert from_date == date(2026, 5, 1)
-        assert to_date == date(2026, 5, 31)
+        assert from_date == days_from_today(-30)
+        assert to_date == tw_today()
         assert status == "confirmed"
 
 
 def test_get_orders_by_employee_id_uses_path_employee_id():
     # arrange: an authenticated employee and a fake order service
     with make_client({"user_id": 9, "role": "employee"}) as (client, service):
-        from zoneinfo import ZoneInfo
-        today = datetime.now(ZoneInfo("Asia/Taipei")).date()
+        today = tw_today()
         # act: receive a GET /orders/employee/{employee_id} request
         response = client.get("/orders/employee/3", params={"range": "history", "status": "cancelled"})
 
@@ -258,8 +256,7 @@ def test_get_orders_by_employee_id_uses_path_employee_id():
 def test_get_me_can_filter_by_status():
     # arrange: an authenticated employee and a fake order service
     with make_client() as (client, service):
-        from zoneinfo import ZoneInfo
-        today = datetime.now(ZoneInfo("Asia/Taipei")).date()
+        today = tw_today()
         # act: receive a GET /orders/me request with a status filter
         response = client.get("/orders/me", params={"status": "cancelled"})
 
@@ -276,8 +273,7 @@ def test_get_me_can_filter_by_status():
 def test_get_orders_by_employee_id_can_filter_by_status():
     # arrange: an authenticated employee and a fake order service
     with make_client() as (client, service):
-        from zoneinfo import ZoneInfo
-        today = datetime.now(ZoneInfo("Asia/Taipei")).date()
+        today = tw_today()
         # act: receive a GET /orders/employee/{employee_id} request with a status filter
         response = client.get("/orders/employee/3", params={"status": "confirmed"})
 

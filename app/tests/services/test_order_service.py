@@ -1,6 +1,5 @@
 import asyncio
-from datetime import date, datetime, timedelta, timezone
-from zoneinfo import ZoneInfo
+from datetime import date, datetime, time, timedelta, timezone
 
 import pytest
 from fastapi import HTTPException
@@ -8,12 +7,12 @@ from fastapi import HTTPException
 from app.models.order import Order, OrderStatus, PlaceOrderRequest, UpdateOrderRequest
 from app.services import order_service
 from app.services.order_service import OrderService
+from app.test_time import after_cutoff_dt, before_cutoff_dt, cutoff_dt, days_from_today, tw_now, tw_today, utc_now
 from uuid import UUID
 
 
 ORDER_ID = "11111111-1111-4111-8111-111111111111"
 ORDER_UUID = UUID(ORDER_ID)
-TW_TZ = ZoneInfo("Asia/Taipei")
 
 # Test UUIDs
 VENDOR_UUID = UUID("00000000-0000-4000-8000-000000000007")
@@ -28,7 +27,7 @@ def make_order(
     vendor_id: UUID = VENDOR_UUID,
     quantity: int = 1,
     status: OrderStatus = OrderStatus.confirmed,
-    pickup_date: date = date.today() + timedelta(days=2),
+    pickup_date: date = days_from_today(2),
 ) -> Order:
     return Order(
         id=order_id,
@@ -39,10 +38,10 @@ def make_order(
         price_snapshot=120,
         quantity=quantity,
         total_price=120 * quantity,
-        order_date=date(2026, 5, 26),
+        order_date=tw_today(),
         pickup_date=pickup_date,
         status=status,
-        created_at=datetime(2026, 5, 26, 4, 0, tzinfo=timezone.utc),
+        created_at=utc_now(),
     )
 
 
@@ -51,6 +50,9 @@ class FakeRedis:
         self.cached = cached
         self.set_calls = []
         self.delete_calls = []
+
+    async def eval(self, script: str, numkeys: int, key: str):
+        return 1
 
     async def get(self, key: str):
         return self.cached
@@ -147,7 +149,7 @@ def test_create_order_raises_conflict_when_out_of_stock(monkeypatch):
         menu_name="Lunch Box",
         price=120,
         quantity=2,
-        pickup_date=date.today() + timedelta(days=2),
+        pickup_date=days_from_today(8),
     )
     monkeypatch.setattr(order_service.rdb_mod, "reserve_inventory", lambda menu_id, target_date, quantity: asyncio.sleep(0, result=-1))
 
@@ -169,7 +171,7 @@ def test_create_order_success_persists_pending_state_and_publishes(monkeypatch):
         menu_name="Lunch Box",
         price=120,
         quantity=2,
-        pickup_date=date.today() + timedelta(days=2),
+        pickup_date=days_from_today(8),
     )
     rdb = FakeRedis()
     publish_calls = []
@@ -209,7 +211,7 @@ def test_create_order_rolls_back_when_queue_publish_fails(monkeypatch):
         menu_name="Lunch Box",
         price=120,
         quantity=2,
-        pickup_date=date.today() + timedelta(days=2),
+        pickup_date=days_from_today(8),
     )
     rdb = FakeRedis()
     incr_calls = []
@@ -239,15 +241,15 @@ def test_create_order_rolls_back_when_queue_publish_fails(monkeypatch):
 def test_create_order_rejects_after_deadline():
     # arrange: an order service at 17:01 on the day before pickup
     svc = OrderService()
-    svc._now = lambda: datetime(2026, 5, 26, 17, 1, tzinfo=TW_TZ)
     req = PlaceOrderRequest(
         vendor_id=VENDOR_UUID,
         menu_id=MENU_UUID,
         menu_name="Lunch Box",
         price=120,
         quantity=1,
-        pickup_date=date(2026, 5, 27),
+        pickup_date=days_from_today(8),
     )
+    svc._now = lambda: cutoff_dt(req.pickup_date)
 
     # act: create an order after the cutoff
     with pytest.raises(HTTPException) as exc_info:
@@ -387,8 +389,8 @@ def test_get_orders_history_returns_employee_orders():
     history_orders = [make_order(order_id=ORDER_ID), make_order(order_id="22222222-2222-4222-8222-222222222222")]
     svc = OrderService()
     svc.order_repo = FakeOrderRepository(employee_orders=history_orders)
-    from_dt = datetime(2026, 5, 1, tzinfo=timezone.utc)
-    to_dt = datetime(2026, 5, 31, tzinfo=timezone.utc)
+    from_dt = datetime.combine(days_from_today(-30), time.min, tzinfo=timezone.utc)
+    to_dt = datetime.combine(days_from_today(0), time.max, tzinfo=timezone.utc)
     fake_redis = FakeRedis(cached=None)
     order_service.rdb_mod.get_redis = lambda: fake_redis
 
@@ -402,7 +404,7 @@ def test_get_orders_history_returns_employee_orders():
 
 def test_cancel_order_updates_status_inventory_and_cache(monkeypatch):
     # arrange: an order service with a cancellable employee order
-    order = make_order(pickup_date=date.today() + timedelta(days=2))
+    order = make_order(pickup_date=days_from_today(8))
     rdb = FakeRedis()
     svc = OrderService()
     svc.order_repo = FakeOrderRepository(order=order)
@@ -426,8 +428,9 @@ def test_cancel_order_updates_status_inventory_and_cache(monkeypatch):
 def test_cancel_order_rejects_after_deadline():
     # arrange: an order service with an order whose cancellation deadline has passed
     svc = OrderService()
-    svc.order_repo = FakeOrderRepository(order=make_order(pickup_date=date(2026, 5, 26)))
-    svc._now = lambda: datetime(2026, 5, 25, 17, 1, tzinfo=TW_TZ)
+    order = make_order(pickup_date=days_from_today(8))
+    svc.order_repo = FakeOrderRepository(order=order)
+    svc._now = lambda: after_cutoff_dt(order.pickup_date)
 
     # act: cancel the order after the deadline
     with pytest.raises(HTTPException) as exc_info:
@@ -441,8 +444,9 @@ def test_cancel_order_rejects_after_deadline():
 def test_update_order_quantity_rejects_after_deadline():
     # arrange: an order service with an order whose change deadline has passed
     svc = OrderService()
-    svc.order_repo = FakeOrderRepository(order=make_order(pickup_date=date(2026, 5, 27)))
-    svc._now = lambda: datetime(2026, 5, 26, 17, 1, tzinfo=TW_TZ)
+    order = make_order(pickup_date=days_from_today(8))
+    svc.order_repo = FakeOrderRepository(order=order)
+    svc._now = lambda: cutoff_dt(order.pickup_date)
 
     # act: update the order quantity after the cutoff
     with pytest.raises(HTTPException) as exc_info:
@@ -594,8 +598,8 @@ def test_get_vendor_orders_history_returns_orders(monkeypatch):
     vendor_orders = [make_order(order_id=ORDER_ID)]
     svc = OrderService()
     svc.order_repo = FakeOrderRepository(vendor_orders=vendor_orders)
-    from_dt = datetime(2026, 5, 1, tzinfo=timezone.utc)
-    to_dt = datetime(2026, 5, 31, tzinfo=timezone.utc)
+    from_dt = datetime.combine(days_from_today(-30), time.min, tzinfo=timezone.utc)
+    to_dt = datetime.combine(days_from_today(0), time.max, tzinfo=timezone.utc)
     monkeypatch.setattr(order_service.rdb_mod, "get_redis", lambda: FakeRedis(cached=None))
 
     # act: fetch the vendor history
@@ -675,8 +679,9 @@ def test_cancel_vendor_order_rejects_already_cancelled():
 def test_cancel_vendor_order_rejects_after_deadline():
     # arrange: an order service with a vendor order past the cutoff
     svc = OrderService()
-    svc.order_repo = FakeOrderRepository(order=make_order(pickup_date=date(2026, 5, 27)))
-    svc._now = lambda: datetime(2026, 5, 26, 17, 1, tzinfo=TW_TZ)
+    order = make_order(pickup_date=days_from_today(8))
+    svc.order_repo = FakeOrderRepository(order=order)
+    svc._now = lambda: cutoff_dt(order.pickup_date)
 
     # act: cancel the vendor order after the cutoff
     with pytest.raises(HTTPException) as exc_info:
