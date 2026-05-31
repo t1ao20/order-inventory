@@ -9,6 +9,7 @@ from app.db import redis as rdb_mod, rabbitmq as mq_mod
 from app.models.order import Order, OrderEvent, OrderStatus
 from app.repositories.inventory_repository import InventoryRepository
 from app.repositories.order_repository import OrderRepository
+from app.services.notification_service import notify_order_cancelled
 
 
 class InventoryService:
@@ -94,3 +95,4 @@ class InventoryService:
             timestamp=int(time.time()),
         )
         await mq_mod.publish("order.cancelled", event.model_dump())
+        await notify_order_cancelled(str(order.id), order.employee_id)

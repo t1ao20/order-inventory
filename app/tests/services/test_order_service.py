@@ -409,9 +409,11 @@ def test_cancel_order_updates_status_inventory_and_cache(monkeypatch):
     svc = OrderService()
     svc.order_repo = FakeOrderRepository(order=order)
     publish_calls = []
+    notify_calls = []
     monkeypatch.setattr(order_service.rdb_mod, "get_redis", lambda: rdb)
     monkeypatch.setattr(order_service.rdb_mod, "incr_inventory", lambda menu_id, target_date: asyncio.sleep(0, result=1))
     monkeypatch.setattr(order_service.mq_mod, "publish", lambda routing_key, payload: asyncio.sleep(0, result=publish_calls.append((routing_key, payload))))
+    monkeypatch.setattr(order_service, "notify_order_cancelled", lambda order_id, user_id: asyncio.sleep(0, result=notify_calls.append((order_id, user_id))))
 
     # act: cancel the order
     asyncio.run(svc.cancel_order(ORDER_UUID, employee_id=1))
@@ -423,6 +425,7 @@ def test_cancel_order_updates_status_inventory_and_cache(monkeypatch):
     assert rdb.set_calls == [(f"order:today:{ORDER_ID}", "cancelled", 86400)]
     assert publish_calls[0][0] == order_service.ORDER_CANCELLED
     assert str(publish_calls[0][1]["order_id"]) == ORDER_ID
+    assert notify_calls == [(ORDER_ID, 1)]
 
 
 def test_cancel_order_rejects_after_deadline():
@@ -618,9 +621,11 @@ def test_cancel_vendor_order_updates_everything(monkeypatch):
     svc.order_repo = FakeOrderRepository(order=order)
     svc.inventory_repo = FakeInventoryRepository()
     publish_calls = []
+    notify_calls = []
     monkeypatch.setattr(order_service.rdb_mod, "get_redis", lambda: rdb)
     monkeypatch.setattr(order_service.rdb_mod, "incr_inventory", lambda menu_id, target_date: asyncio.sleep(0, result=2))
     monkeypatch.setattr(order_service.mq_mod, "publish", lambda routing_key, payload: asyncio.sleep(0, result=publish_calls.append((routing_key, payload))))
+    monkeypatch.setattr(order_service, "notify_order_cancelled", lambda order_id, user_id: asyncio.sleep(0, result=notify_calls.append((order_id, user_id))))
 
     # act: cancel the vendor order
     asyncio.run(svc.cancel_vendor_order(ORDER_UUID, vendor_id=VENDOR_UUID))
@@ -632,6 +637,7 @@ def test_cancel_vendor_order_updates_everything(monkeypatch):
     assert publish_calls[0][0] == order_service.ORDER_CANCELLED
     assert publish_calls[0][1]["pickup_date"] == order.pickup_date.isoformat()
     assert publish_calls[0][1]["vendor_id"] == VENDOR_UUID
+    assert notify_calls == [(ORDER_ID, 1)]
 
 
 def test_cancel_vendor_order_rejects_wrong_vendor():
@@ -783,9 +789,11 @@ def test_admin_update_order_cancel_uses_loaded_cancel_path(monkeypatch):
     svc.order_repo = FakeOrderRepository(order=order)
     svc.inventory_repo = FakeInventoryRepository()
     publish_calls = []
+    notify_calls = []
     monkeypatch.setattr(order_service.rdb_mod, "get_redis", lambda: rdb)
     monkeypatch.setattr(order_service.rdb_mod, "incr_inventory", lambda menu_id, target_date: asyncio.sleep(0, result=1))
     monkeypatch.setattr(order_service.mq_mod, "publish", lambda routing_key, payload: asyncio.sleep(0, result=publish_calls.append((routing_key, payload))))
+    monkeypatch.setattr(order_service, "notify_order_cancelled", lambda order_id, user_id: asyncio.sleep(0, result=notify_calls.append((order_id, user_id))))
 
     # act: cancel the order as admin
     result = asyncio.run(
@@ -803,6 +811,7 @@ def test_admin_update_order_cancel_uses_loaded_cancel_path(monkeypatch):
     assert rdb.set_calls == [(f"order:today:{ORDER_ID}", "cancelled", 86400)]
     assert publish_calls[0][0] == order_service.ORDER_CANCELLED
     assert publish_calls[0][1]["pickup_date"] == order.pickup_date.isoformat()
+    assert notify_calls == [(ORDER_ID, 1)]
 
 
 def test_get_order_for_actor_rejects_wrong_employee():
@@ -904,9 +913,11 @@ def test_vendor_update_order_can_cancel_own_order(monkeypatch):
     svc.order_repo = FakeOrderRepository(order=order)
     svc.inventory_repo = FakeInventoryRepository()
     publish_calls = []
+    notify_calls = []
     monkeypatch.setattr(order_service.rdb_mod, "get_redis", lambda: rdb)
     monkeypatch.setattr(order_service.rdb_mod, "incr_inventory", lambda menu_id, target_date: asyncio.sleep(0, result=2))
     monkeypatch.setattr(order_service.mq_mod, "publish", lambda routing_key, payload: asyncio.sleep(0, result=publish_calls.append((routing_key, payload))))
+    monkeypatch.setattr(order_service, "notify_order_cancelled", lambda order_id, user_id: asyncio.sleep(0, result=notify_calls.append((order_id, user_id))))
 
     # act: update the order as vendor to cancelled
     result = asyncio.run(
@@ -925,3 +936,4 @@ def test_vendor_update_order_can_cancel_own_order(monkeypatch):
     assert publish_calls[0][0] == order_service.ORDER_CANCELLED
     assert str(publish_calls[0][1]["order_id"]) == ORDER_ID
     assert publish_calls[0][1]["pickup_date"] == order.pickup_date.isoformat()
+    assert notify_calls == [(ORDER_ID, 1)]

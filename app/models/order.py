@@ -1,6 +1,6 @@
 from datetime import date, datetime
 from enum import Enum
-from typing import Optional
+from typing import Optional, List
 from uuid import UUID
 
 from pydantic import BaseModel, Field
@@ -28,6 +28,7 @@ class Order(BaseModel):
     pickup_date: date
     status: OrderStatus
     created_at: datetime
+    menu_tags: List[str] = Field(default_factory=list)
 
     class Config:
         from_attributes = True
@@ -82,3 +83,4 @@ class OrderEvent(BaseModel):
     pickup_date: str = ""
     status: OrderStatus = OrderStatus.pending
     timestamp: int
+    menu_tags: List[str] = Field(default_factory=list)

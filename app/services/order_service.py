@@ -11,6 +11,7 @@ from app.db import redis as rdb_mod, rabbitmq as mq_mod
 from app.models.order import Order, OrderEvent, OrderStatus, PlaceOrderRequest, UpdateOrderRequest
 from app.repositories.order_repository import OrderRepository
 from app.repositories.inventory_repository import InventoryRepository
+from app.services.notification_service import notify_order_cancelled
 
 ORDER_CREATED = "order.created"
 ORDER_CANCELLED = "order.cancelled"
@@ -126,6 +127,7 @@ class OrderService:
             timestamp=int(time.time()),
         )
         await mq_mod.publish(ORDER_CANCELLED, event.model_dump())
+        await notify_order_cancelled(str(order_id), order.employee_id)
 
     # ── Get Order ──────────────────────────────────────────────
     async def get_order(self, order_id: UUID, employee_id: int) -> Order:
@@ -301,6 +303,7 @@ class OrderService:
             timestamp=int(time.time()),
         )
         await mq_mod.publish(ORDER_CANCELLED, event.model_dump())
+        await notify_order_cancelled(str(order_id), order.employee_id)
 
     async def reject_vendor_order(self, order_id: UUID, vendor_id: UUID) -> Order:
         await self.cancel_vendor_order(order_id, vendor_id)
@@ -410,3 +413,4 @@ class OrderService:
             timestamp=int(time.time()),
         )
         await mq_mod.publish(ORDER_CANCELLED, event.model_dump())
+        await notify_order_cancelled(str(order.id), order.employee_id)

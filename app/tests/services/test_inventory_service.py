@@ -181,7 +181,9 @@ def test_set_inventory_cancels_latest_orders_when_lowering_max(monkeypatch):
     )
     monkeypatch.setattr(inventory_service.rdb_mod, "get_redis", lambda: rdb)
     publish_calls = []
+    notify_calls = []
     monkeypatch.setattr(inventory_service.mq_mod, "publish", lambda routing_key, payload: asyncio.sleep(0, result=publish_calls.append((routing_key, payload))))
+    monkeypatch.setattr(inventory_service, "notify_order_cancelled", lambda order_id, user_id: asyncio.sleep(0, result=notify_calls.append((order_id, user_id))))
 
     # act: lower the max inventory from 50 to 40
     asyncio.run(svc.set_inventory(MENU_UUID, days_from_today(8), 40))
@@ -203,3 +205,8 @@ def test_set_inventory_cancels_latest_orders_when_lowering_max(monkeypatch):
     assert svc.repo.item.remaining_quantity == 2
     assert rdb.set_calls[-1] == (f"inventory:{str(MENU_UUID)}:{days_from_today(8).isoformat()}", 2, rdb.set_calls[-1][2])
     assert publish_calls[0][0] == "order.cancelled"
+    assert notify_calls == [
+        ("00000000-0000-4000-8000-000000000103", 1),
+        ("00000000-0000-4000-8000-000000000203", 1),
+        ("00000000-0000-4000-8000-000000000303", 1),
+    ]
