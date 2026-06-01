@@ -48,9 +48,9 @@ def rate_limit_key(user_id: int) -> str:
 DECR_INVENTORY_SCRIPT = """
 local key   = KEYS[1]
 local stock = redis.call('GET', key)
-if not stock then return -1 end
+if not stock then return -2 end
 stock = tonumber(stock)
-if stock <= 0 then return 0 end
+if stock <= 0 then return -1 end
 return redis.call('DECR', key)
 """
 
@@ -83,7 +83,7 @@ return stock - qty
 
 
 async def decr_inventory(menu_id: Union[int, str, UUID], date: str) -> int:
-    """Atomically decrement inventory. Returns remaining stock, 0=sold out, -1=not set."""
+    """Atomically decrement inventory. Returns remaining stock, -1=sold out, -2=not set."""
     rdb = get_redis()
     key = inventory_key(menu_id, date)
     result = await rdb.eval(DECR_INVENTORY_SCRIPT, 1, key)

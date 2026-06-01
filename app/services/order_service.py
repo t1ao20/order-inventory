@@ -363,16 +363,19 @@ class OrderService:
             try:
                 for _ in range(diff):
                     remaining = await rdb_mod.decr_inventory(order.menu_id, target_date_str)
-                    if remaining < 0:
+                    if remaining == -2:
                         raise HTTPException(status_code=404, detail="Inventory not found")
-                    if remaining <= 0:
+                    if remaining == -1:
                         raise HTTPException(status_code=409, detail="Out of stock")
                     reserved += 1
+
+                updated = await self.inventory_repo.decrement(order.menu_id, target_date, diff)
+                if not updated:
+                    raise HTTPException(status_code=409, detail="Inventory update failed")
             except HTTPException:
                 for _ in range(reserved):
                     await rdb_mod.incr_inventory(order.menu_id, target_date_str)
                 raise
-            await self.inventory_repo.decrement(order.menu_id, target_date, diff)
         else:
             restore_qty = abs(diff)
             for _ in range(restore_qty):

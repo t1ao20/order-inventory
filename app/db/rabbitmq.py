@@ -59,7 +59,7 @@ async def close_rabbitmq():
 async def publish(routing_key: str, payload: dict):
     if _exchange is None:
         raise RuntimeError("RabbitMQ not initialised")
-    body = json.dumps(payload).encode()
+    body = json.dumps(payload, default=str).encode()
     await _exchange.publish(
         Message(
             body=body,

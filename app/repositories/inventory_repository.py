@@ -17,9 +17,9 @@ class InventoryRepository:
         )
         return DailyInventory(**dict(row)) if row else None
 
-    async def decrement(self, menu_id: UUID, target_date: date, qty: int = 1) -> None:
+    async def decrement(self, menu_id: UUID, target_date: date, qty: int = 1) -> bool:
         pool = get_pool()
-        await pool.execute(
+        result = await pool.execute(
             """
             UPDATE daily_inventory
             SET sold_quantity = sold_quantity + $1,
@@ -28,6 +28,7 @@ class InventoryRepository:
             """,
             qty, menu_id, target_date,
         )
+        return result == "UPDATE 1"
 
     async def increment(self, menu_id: UUID, target_date: date, qty: int = 1) -> None:
         pool = get_pool()

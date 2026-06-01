@@ -117,12 +117,14 @@ class FakeOrderRepository:
 
 
 class FakeInventoryRepository:
-    def __init__(self):
+    def __init__(self, decrement_result=True):
         self.increment_call = None
         self.decrement_call = None
+        self.decrement_result = decrement_result
 
     async def decrement(self, menu_id: UUID, target_date: date, qty: int):
         self.decrement_call = (menu_id, target_date, qty)
+        return self.decrement_result
 
     async def increment(self, menu_id: UUID, target_date: date, qty: int):
         self.increment_call = (menu_id, target_date, qty)
@@ -384,7 +386,7 @@ def test_get_vendor_order_allows_matching_vendor(monkeypatch):
     assert result.vendor_id == VENDOR_UUID
 
 
-def test_get_orders_history_returns_employee_orders():
+def test_get_orders_history_returns_employee_orders(monkeypatch):
     # arrange: an order service with two historical orders
     history_orders = [make_order(order_id=ORDER_ID), make_order(order_id="22222222-2222-4222-8222-222222222222")]
     svc = OrderService()
@@ -392,7 +394,7 @@ def test_get_orders_history_returns_employee_orders():
     from_dt = datetime.combine(days_from_today(-30), time.min, tzinfo=timezone.utc)
     to_dt = datetime.combine(days_from_today(0), time.max, tzinfo=timezone.utc)
     fake_redis = FakeRedis(cached=None)
-    order_service.rdb_mod.get_redis = lambda: fake_redis
+    monkeypatch.setattr(order_service.rdb_mod, "get_redis", lambda: fake_redis)
 
     # act: fetch order history
     result = asyncio.run(svc.get_orders_history(employee_id=1, from_dt=from_dt, to_dt=to_dt))
@@ -888,12 +890,63 @@ def test_employee_update_order_can_increase_quantity(monkeypatch):
     assert svc.order_repo.update_quantity_call == (ORDER_ID, 3, 360)
 
 
+def test_employee_update_order_quantity_allows_decrement_to_zero_stock(monkeypatch):
+    # arrange: an order service where Redis returns 0 after taking the last item
+    order = make_order(quantity=1)
+    svc = OrderService()
+    svc.order_repo = FakeOrderRepository(order=order)
+    svc.inventory_repo = FakeInventoryRepository()
+    decr_calls = []
+    monkeypatch.setattr(
+        order_service.rdb_mod,
+        "decr_inventory",
+        lambda menu_id, target_date: asyncio.sleep(0, result=decr_calls.append((menu_id, target_date)) or 0),
+    )
+    monkeypatch.setattr(order_service.rdb_mod, "get_redis", lambda: FakeRedis(cached=None))
+
+    # act: increase the order by one when only one extra item remains
+    result = asyncio.run(svc.update_order_quantity(ORDER_UUID, employee_id=1, quantity=2))
+
+    # assert: a remaining stock value of 0 should still be a successful reservation
+    assert result.quantity == 2
+    assert result.total_price == 240
+    assert decr_calls == [(MENU_UUID, order.pickup_date.isoformat())]
+    assert svc.inventory_repo.decrement_call == (MENU_UUID, order.pickup_date, 1)
+    assert svc.order_repo.update_quantity_call == (ORDER_ID, 2, 240)
+
+
+def test_employee_update_order_quantity_rolls_back_redis_when_db_decrement_fails(monkeypatch):
+    # arrange: Redis reserves stock, but the DB inventory update affects no rows
+    order = make_order(quantity=1)
+    svc = OrderService()
+    svc.order_repo = FakeOrderRepository(order=order)
+    svc.inventory_repo = FakeInventoryRepository(decrement_result=False)
+    incr_calls = []
+    monkeypatch.setattr(order_service.rdb_mod, "decr_inventory", lambda menu_id, target_date: asyncio.sleep(0, result=4))
+    monkeypatch.setattr(
+        order_service.rdb_mod,
+        "incr_inventory",
+        lambda menu_id, target_date: asyncio.sleep(0, result=incr_calls.append((menu_id, target_date))),
+    )
+
+    # act: increase the order quantity when the database inventory row cannot be updated
+    with pytest.raises(HTTPException) as exc_info:
+        asyncio.run(svc.update_order_quantity(ORDER_UUID, employee_id=1, quantity=2))
+
+    # assert: reserved Redis stock should be restored and the order should not be updated
+    assert exc_info.value.status_code == 409
+    assert exc_info.value.detail == "Inventory update failed"
+    assert incr_calls == [(MENU_UUID, order.pickup_date.isoformat())]
+    assert svc.inventory_repo.decrement_call == (MENU_UUID, order.pickup_date, 1)
+    assert svc.order_repo.update_quantity_call is None
+
+
 def test_employee_update_order_quantity_returns_conflict_when_out_of_stock(monkeypatch):
     # arrange: an order service with an employee-owned order and no extra inventory
     svc = OrderService()
     svc.order_repo = FakeOrderRepository(order=make_order())
     svc.inventory_repo = FakeInventoryRepository()
-    monkeypatch.setattr(order_service.rdb_mod, "decr_inventory", lambda menu_id, target_date: asyncio.sleep(0, result=0))
+    monkeypatch.setattr(order_service.rdb_mod, "decr_inventory", lambda menu_id, target_date: asyncio.sleep(0, result=-1))
 
     # act: update the order quantity above available inventory
     with pytest.raises(HTTPException) as exc_info:

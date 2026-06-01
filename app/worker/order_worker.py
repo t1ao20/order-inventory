@@ -51,7 +51,9 @@ class OrderWorker:
             await self.order_repo.create(order)
 
             # Decrement DB inventory for the pickup date (Redis already decremented atomically)
-            await self.inventory_repo.decrement(payload["menu_id"], pickup_date, payload.get("quantity", 1))
+            updated = await self.inventory_repo.decrement(payload["menu_id"], pickup_date, payload.get("quantity", 1))
+            if not updated:
+                raise RuntimeError("Inventory decrement failed")
 
             # Update live status in Redis: pending → confirmed
             rdb = rdb_mod.get_redis()
