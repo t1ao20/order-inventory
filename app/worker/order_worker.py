@@ -61,4 +61,4 @@ class OrderWorker:
 
         except Exception as e:
             logger.error(f"[Worker] Failed to process order {order_id}: {e}")
-            # In production: send to dead-letter queue
+            raise

@@ -19,7 +19,7 @@ def get_service() -> OrderService:
 
 def require_vendor(user: dict) -> None:
     if user["role"] not in ("vendor", "admin"):
-        raise HTTPException(status_code=403, detail="Only vendors can access vendor orders")
+        raise HTTPException(status_code=403, detail="Only vendors/admin can access vendor orders")
 
 
 # GET /vendor/orders
@@ -48,6 +48,8 @@ async def get_vendor_orders(
         from_date = None
         to_date = today
 
+
+#  vendor_id 這裡是uuid，從user_id轉換來的，確保在OrderService裡面有正確處理這個轉換
     orders = await svc.get_vendor_orders(
         vendor_id=user["user_id"],
         from_date=from_date,

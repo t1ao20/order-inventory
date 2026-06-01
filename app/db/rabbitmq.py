@@ -77,12 +77,13 @@ async def consume(queue_name: str, callback: Callable[[dict], Awaitable[None]]):
     queue = await _channel.get_queue(queue_name)
 
     async def _on_message(message: aio_pika.IncomingMessage):
-        async with message.process():
+        async with message.process(requeue=True):
             try:
                 payload = json.loads(message.body)
                 await callback(payload)
             except Exception as e:
-                logger.error(f"Worker error processing message: {e}")
+                logger.exception(f"Worker error processing message: {e}")
+                raise
 
     await queue.consume(_on_message)
     logger.info(f"Consumer started on queue: {queue_name}")

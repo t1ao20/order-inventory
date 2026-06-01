@@ -110,8 +110,7 @@ class OrderService:
         await self.order_repo.update_status(order_id, OrderStatus.cancelled)
 
         # Restore Redis inventory for the pickup date
-        target_date = order.pickup_date.isoformat()
-        await rdb_mod.incr_inventory(order.menu_id, target_date)
+        await self._restore_order_inventory(order)
 
         # Update cached status
         rdb = rdb_mod.get_redis()
@@ -286,9 +285,7 @@ class OrderService:
 
         await self.order_repo.update_status(order_id, OrderStatus.cancelled)
 
-        target_date = order.pickup_date.isoformat()
-        await rdb_mod.incr_inventory(order.menu_id, target_date)
-        await self.inventory_repo.increment(order.menu_id, order.pickup_date, order.quantity)
+        await self._restore_order_inventory(order)
 
         rdb = rdb_mod.get_redis()
         await rdb.set(rdb_mod.order_status_key(order_id), "cancelled", ex=86400)
@@ -345,6 +342,12 @@ class OrderService:
         rdb = rdb_mod.get_redis()
         await rdb.set(rdb_mod.order_status_key(order_id), status_value.value, ex=86400)
 
+    async def _restore_order_inventory(self, order: Order) -> None:
+        target_date = order.pickup_date.isoformat()
+        for _ in range(order.quantity):
+            await rdb_mod.incr_inventory(order.menu_id, target_date)
+        await self.inventory_repo.increment(order.menu_id, order.pickup_date, order.quantity)
+
     async def _update_order_quantity(self, order: Order, quantity: int) -> None:
         if order.status == OrderStatus.cancelled:
             raise HTTPException(status_code=422, detail="Cannot update cancelled order")
@@ -398,9 +401,7 @@ class OrderService:
 
         await self.order_repo.update_status(order.id, OrderStatus.cancelled)
 
-        target_date = order.pickup_date.isoformat()
-        await rdb_mod.incr_inventory(order.menu_id, target_date)
-        await self.inventory_repo.increment(order.menu_id, order.pickup_date, order.quantity)
+        await self._restore_order_inventory(order)
         await self._cache_status(order.id, OrderStatus.cancelled)
 
         event = OrderEvent(

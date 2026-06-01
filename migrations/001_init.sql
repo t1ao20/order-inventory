@@ -1,7 +1,7 @@
 -- migrations/001_init.sql
 
 CREATE TABLE IF NOT EXISTS orders (
-    id              TEXT PRIMARY KEY,
+    id              UUID PRIMARY KEY,
     employee_id     BIGINT       NOT NULL,
     vendor_id       UUID         NOT NULL,
     menu_id         UUID         NOT NULL,

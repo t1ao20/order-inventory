@@ -404,14 +404,16 @@ def test_get_orders_history_returns_employee_orders():
 
 def test_cancel_order_updates_status_inventory_and_cache(monkeypatch):
     # arrange: an order service with a cancellable employee order
-    order = make_order(pickup_date=days_from_today(8))
+    order = make_order(pickup_date=days_from_today(8), quantity=3)
     rdb = FakeRedis()
     svc = OrderService()
     svc.order_repo = FakeOrderRepository(order=order)
+    svc.inventory_repo = FakeInventoryRepository()
+    incr_calls = []
     publish_calls = []
     notify_calls = []
     monkeypatch.setattr(order_service.rdb_mod, "get_redis", lambda: rdb)
-    monkeypatch.setattr(order_service.rdb_mod, "incr_inventory", lambda menu_id, target_date: asyncio.sleep(0, result=1))
+    monkeypatch.setattr(order_service.rdb_mod, "incr_inventory", lambda menu_id, target_date: asyncio.sleep(0, result=incr_calls.append((menu_id, target_date))))
     monkeypatch.setattr(order_service.mq_mod, "publish", lambda routing_key, payload: asyncio.sleep(0, result=publish_calls.append((routing_key, payload))))
     monkeypatch.setattr(order_service, "notify_order_cancelled", lambda order_id, user_id: asyncio.sleep(0, result=notify_calls.append((order_id, user_id))))
 
@@ -420,7 +422,8 @@ def test_cancel_order_updates_status_inventory_and_cache(monkeypatch):
 
     # assert: status, Redis cache, and publish event should be updated
     assert svc.order_repo.update_status_call == (ORDER_ID, OrderStatus.cancelled)
-    assert svc.inventory_repo is not None
+    assert incr_calls == [(MENU_UUID, order.pickup_date.isoformat())] * 3
+    assert svc.inventory_repo.increment_call == (MENU_UUID, order.pickup_date, 3)
     assert publish_calls[0][1]["pickup_date"] == order.pickup_date.isoformat()
     assert rdb.set_calls == [(f"order:today:{ORDER_ID}", "cancelled", 86400)]
     assert publish_calls[0][0] == order_service.ORDER_CANCELLED
@@ -615,15 +618,16 @@ def test_get_vendor_orders_history_returns_orders(monkeypatch):
 
 def test_cancel_vendor_order_updates_everything(monkeypatch):
     # arrange: an order service with a vendor-owned order and fake inventory dependencies
-    order = make_order()
+    order = make_order(quantity=2)
     rdb = FakeRedis()
     svc = OrderService()
     svc.order_repo = FakeOrderRepository(order=order)
     svc.inventory_repo = FakeInventoryRepository()
+    incr_calls = []
     publish_calls = []
     notify_calls = []
     monkeypatch.setattr(order_service.rdb_mod, "get_redis", lambda: rdb)
-    monkeypatch.setattr(order_service.rdb_mod, "incr_inventory", lambda menu_id, target_date: asyncio.sleep(0, result=2))
+    monkeypatch.setattr(order_service.rdb_mod, "incr_inventory", lambda menu_id, target_date: asyncio.sleep(0, result=incr_calls.append((menu_id, target_date))))
     monkeypatch.setattr(order_service.mq_mod, "publish", lambda routing_key, payload: asyncio.sleep(0, result=publish_calls.append((routing_key, payload))))
     monkeypatch.setattr(order_service, "notify_order_cancelled", lambda order_id, user_id: asyncio.sleep(0, result=notify_calls.append((order_id, user_id))))
 
@@ -632,7 +636,8 @@ def test_cancel_vendor_order_updates_everything(monkeypatch):
 
     # assert: repository, inventory, cache, and publish event should all be updated
     assert svc.order_repo.update_status_call == (ORDER_ID, OrderStatus.cancelled)
-    assert svc.inventory_repo.increment_call == (MENU_UUID, order.pickup_date, 1)
+    assert incr_calls == [(MENU_UUID, order.pickup_date.isoformat())] * 2
+    assert svc.inventory_repo.increment_call == (MENU_UUID, order.pickup_date, 2)
     assert rdb.set_calls == [(f"order:today:{ORDER_ID}", "cancelled", 86400)]
     assert publish_calls[0][0] == order_service.ORDER_CANCELLED
     assert publish_calls[0][1]["pickup_date"] == order.pickup_date.isoformat()
@@ -783,15 +788,16 @@ def test_vendor_update_order_rejects_non_cancel_status():
 
 def test_admin_update_order_cancel_uses_loaded_cancel_path(monkeypatch):
     # arrange: an order service with an order and fake cache/inventory dependencies
-    order = make_order()
+    order = make_order(quantity=2)
     rdb = FakeRedis()
     svc = OrderService()
     svc.order_repo = FakeOrderRepository(order=order)
     svc.inventory_repo = FakeInventoryRepository()
+    incr_calls = []
     publish_calls = []
     notify_calls = []
     monkeypatch.setattr(order_service.rdb_mod, "get_redis", lambda: rdb)
-    monkeypatch.setattr(order_service.rdb_mod, "incr_inventory", lambda menu_id, target_date: asyncio.sleep(0, result=1))
+    monkeypatch.setattr(order_service.rdb_mod, "incr_inventory", lambda menu_id, target_date: asyncio.sleep(0, result=incr_calls.append((menu_id, target_date))))
     monkeypatch.setattr(order_service.mq_mod, "publish", lambda routing_key, payload: asyncio.sleep(0, result=publish_calls.append((routing_key, payload))))
     monkeypatch.setattr(order_service, "notify_order_cancelled", lambda order_id, user_id: asyncio.sleep(0, result=notify_calls.append((order_id, user_id))))
 
@@ -807,7 +813,8 @@ def test_admin_update_order_cancel_uses_loaded_cancel_path(monkeypatch):
     # assert: admin cancel should use the loaded cancel path and cache cancelled
     assert result.status == OrderStatus.cancelled
     assert svc.order_repo.update_status_call == (ORDER_ID, OrderStatus.cancelled)
-    assert svc.inventory_repo.increment_call == (MENU_UUID, order.pickup_date, 1)
+    assert incr_calls == [(MENU_UUID, order.pickup_date.isoformat())] * 2
+    assert svc.inventory_repo.increment_call == (MENU_UUID, order.pickup_date, 2)
     assert rdb.set_calls == [(f"order:today:{ORDER_ID}", "cancelled", 86400)]
     assert publish_calls[0][0] == order_service.ORDER_CANCELLED
     assert publish_calls[0][1]["pickup_date"] == order.pickup_date.isoformat()
@@ -907,15 +914,16 @@ def test_employee_update_order_quantity_returns_conflict_when_out_of_stock(monke
 
 def test_vendor_update_order_can_cancel_own_order(monkeypatch):
     # arrange: an order service with a vendor-owned order and fake inventory dependencies
-    order = make_order()
+    order = make_order(quantity=2)
     rdb = FakeRedis()
     svc = OrderService()
     svc.order_repo = FakeOrderRepository(order=order)
     svc.inventory_repo = FakeInventoryRepository()
+    incr_calls = []
     publish_calls = []
     notify_calls = []
     monkeypatch.setattr(order_service.rdb_mod, "get_redis", lambda: rdb)
-    monkeypatch.setattr(order_service.rdb_mod, "incr_inventory", lambda menu_id, target_date: asyncio.sleep(0, result=2))
+    monkeypatch.setattr(order_service.rdb_mod, "incr_inventory", lambda menu_id, target_date: asyncio.sleep(0, result=incr_calls.append((menu_id, target_date))))
     monkeypatch.setattr(order_service.mq_mod, "publish", lambda routing_key, payload: asyncio.sleep(0, result=publish_calls.append((routing_key, payload))))
     monkeypatch.setattr(order_service, "notify_order_cancelled", lambda order_id, user_id: asyncio.sleep(0, result=notify_calls.append((order_id, user_id))))
 
@@ -931,7 +939,8 @@ def test_vendor_update_order_can_cancel_own_order(monkeypatch):
     # assert: repository, inventory, Redis, and RabbitMQ should receive the cancellation
     assert result.status == OrderStatus.cancelled
     assert svc.order_repo.update_status_call == (ORDER_ID, OrderStatus.cancelled)
-    assert svc.inventory_repo.increment_call == (MENU_UUID, order.pickup_date, 1)
+    assert incr_calls == [(MENU_UUID, order.pickup_date.isoformat())] * 2
+    assert svc.inventory_repo.increment_call == (MENU_UUID, order.pickup_date, 2)
     assert rdb.set_calls == [(f"order:today:{ORDER_ID}", "cancelled", 86400)]
     assert publish_calls[0][0] == order_service.ORDER_CANCELLED
     assert str(publish_calls[0][1]["order_id"]) == ORDER_ID

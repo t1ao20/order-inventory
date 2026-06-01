@@ -22,11 +22,11 @@ def test_get_current_user_defaults_role_to_employee_and_allows_missing_email():
 
 
 def test_get_current_user_fallbacks_to_jwt():
-    payload = {"user_id": 42, "email": "u@example.com", "role": "vendor"}
+    payload = {"userId": 1, "email": "user@example.com", "role": "admin"}
     token = jwt.encode(payload, settings.JWT_SECRET, algorithm=settings.JWT_ALGORITHM)
     req = DummyRequest({"authorization": f"Bearer {token}"})
     result = get_current_user(request=req, x_user_id=None)
-    assert result == {"user_id": 42, "email": "u@example.com", "role": "vendor"}
+    assert result == {"user_id": 1, "email": "user@example.com", "role": "admin"}
 
 
 def test_get_current_user_rejects_missing_credentials():
