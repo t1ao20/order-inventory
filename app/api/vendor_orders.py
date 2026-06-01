@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from app.core.auth import get_current_user
 from app.models.order import Order
 from app.services.order_service import OrderService
+from app.services.vendor_menu_service import VendorMenuService
 
 router = APIRouter()
 TW_TZ = ZoneInfo("Asia/Taipei")
@@ -15,6 +16,10 @@ TW_TZ = ZoneInfo("Asia/Taipei")
 
 def get_service() -> OrderService:
     return OrderService()
+
+
+def get_vendor_menu_service() -> VendorMenuService:
+    return VendorMenuService()
 
 
 def require_vendor(user: dict) -> None:
@@ -27,6 +32,7 @@ def require_vendor(user: dict) -> None:
 async def get_vendor_orders(
     user: Annotated[dict, Depends(get_current_user)],
     svc: OrderService = Depends(get_service),
+    vendor_menu_svc: VendorMenuService = Depends(get_vendor_menu_service),
     range: Optional[str] = Query(default=None),
     from_date: Optional[date] = Query(default=None, alias="from"),
     to_date: Optional[date] = Query(default=None, alias="to"),
@@ -48,10 +54,9 @@ async def get_vendor_orders(
         from_date = None
         to_date = today
 
-
-#  vendor_id 這裡是uuid，從user_id轉換來的，確保在OrderService裡面有正確處理這個轉換
+    vendor_id = await vendor_menu_svc.get_current_vendor_id(user["user_id"])
     orders = await svc.get_vendor_orders(
-        vendor_id=user["user_id"],
+        vendor_id=vendor_id,
         from_date=from_date,
         to_date=to_date,
         status=status,
@@ -101,6 +106,8 @@ async def reject_vendor_order(
     order_id: UUID,
     user: Annotated[dict, Depends(get_current_user)],
     svc: OrderService = Depends(get_service),
+    vendor_menu_svc: VendorMenuService = Depends(get_vendor_menu_service),
 ):
     require_vendor(user)
-    return await svc.reject_vendor_order(order_id, vendor_id=user["user_id"])
+    vendor_id = await vendor_menu_svc.get_current_vendor_id(user["user_id"])
+    return await svc.reject_vendor_order(order_id, vendor_id=vendor_id)

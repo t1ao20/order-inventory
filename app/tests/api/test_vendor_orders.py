@@ -61,22 +61,33 @@ class FakeOrderService:
         return order_payload(order_id=order_id, status="cancelled")
 
 
+class FakeVendorMenuService:
+    def __init__(self):
+        self.current_vendor_call = None
+
+    async def get_current_vendor_id(self, user_id: int) -> UUID:
+        self.current_vendor_call = user_id
+        return VENDOR_UUID
+
+
 @contextmanager
 def make_client(user: dict):
     app = FastAPI()
     app.include_router(vendor_orders_api.router, prefix="/vendor/orders")
 
     service = FakeOrderService()
+    vendor_menu_service = FakeVendorMenuService()
     app.dependency_overrides[vendor_orders_api.get_current_user] = lambda: user
     app.dependency_overrides[vendor_orders_api.get_service] = lambda: service
+    app.dependency_overrides[vendor_orders_api.get_vendor_menu_service] = lambda: vendor_menu_service
 
     with TestClient(app) as client:
-        yield client, service
+        yield client, service, vendor_menu_service
 
 
 def test_vendor_can_get_today_orders():
     # arrange: an authenticated vendor and a fake order service
-    with make_client({"user_id": VENDOR_UUID, "role": "vendor"}) as (client, service):
+    with make_client({"user_id": 7, "role": "vendor"}) as (client, service, vendor_menu_service):
         today = tw_today()
         # act: receive a GET /vendor/orders?range=today request
         response = client.get("/vendor/orders", params={"range": "today"})
@@ -88,6 +99,7 @@ def test_vendor_can_get_today_orders():
         assert response.json()["count"] == 2
         assert response.json()["orders"][0]["id"] == ORDER_ID
         assert vendor_id == VENDOR_UUID
+        assert vendor_menu_service.current_vendor_call == 7
         assert from_date == today
         assert to_date == today
         assert status is None
@@ -95,7 +107,7 @@ def test_vendor_can_get_today_orders():
 
 def test_admin_can_get_vendor_order_history():
     # arrange: an authenticated admin and a fake order service
-    with make_client({"user_id": VENDOR_UUID, "role": "admin"}) as (client, service):
+    with make_client({"user_id": 7, "role": "admin"}) as (client, service, vendor_menu_service):
         today = tw_today()
         # act: receive a GET /vendor/orders?range=history request
         response = client.get("/vendor/orders", params={"range": "history"})
@@ -110,6 +122,7 @@ def test_admin_can_get_vendor_order_history():
         assert response.json()["orders"][1]["total_price"] == 240
         assert response.json()["range"] == "history"
         assert vendor_id == VENDOR_UUID
+        assert vendor_menu_service.current_vendor_call == 7
         assert from_date is None
         assert to_date == today
         assert status is None
@@ -117,7 +130,7 @@ def test_admin_can_get_vendor_order_history():
 
 def test_vendor_can_get_custom_range_and_status():
     # arrange: an authenticated vendor and a fake order service
-    with make_client({"user_id": VENDOR_UUID, "role": "vendor"}) as (client, service):
+    with make_client({"user_id": 7, "role": "vendor"}) as (client, service, vendor_menu_service):
         # act: receive a GET /vendor/orders request with custom filters
         response = client.get(
             "/vendor/orders",
@@ -131,6 +144,7 @@ def test_vendor_can_get_custom_range_and_status():
         assert response.json()["status"] == "completed"
         assert response.json()["count"] == 2
         assert vendor_id == VENDOR_UUID
+        assert vendor_menu_service.current_vendor_call == 7
         assert from_date == days_from_today(-30)
         assert to_date == tw_today()
         assert status == "completed"
@@ -138,7 +152,7 @@ def test_vendor_can_get_custom_range_and_status():
 
 def test_vendor_can_get_orders_by_vendor_id():
     # arrange: an authenticated vendor and a fake order service
-    with make_client({"user_id": VENDOR_UUID, "role": "vendor"}) as (client, service):
+    with make_client({"user_id": 7, "role": "vendor"}) as (client, service, vendor_menu_service):
         today = tw_today()
         # act: receive a GET /vendor/orders/vendor/{vendor_id} request
 
@@ -151,6 +165,7 @@ def test_vendor_can_get_orders_by_vendor_id():
         assert response.json()["range"] == "today"
         assert response.json()["count"] == 2
         assert vendor_id == VENDOR_UUID_11
+        assert vendor_menu_service.current_vendor_call is None
         assert from_date == today
         assert to_date == today
         assert status is None
@@ -158,19 +173,20 @@ def test_vendor_can_get_orders_by_vendor_id():
 
 def test_employee_cannot_get_vendor_orders():
     # arrange: an authenticated employee and a fake order service
-    with make_client({"user_id": 1, "role": "employee"}) as (client, service):
+    with make_client({"user_id": 1, "role": "employee"}) as (client, service, vendor_menu_service):
         # act: receive a GET /vendor/orders request
         response = client.get("/vendor/orders")
 
         # assert: response should be status code 403 and not call the service
         assert response.status_code == 403
-        assert response.json() == {"detail": "Only vendors can access vendor orders"}
+        assert response.json() == {"detail": "Only vendors/admin can access vendor orders"}
         assert service.orders_call is None
+        assert vendor_menu_service.current_vendor_call is None
 
 
 def test_vendor_can_reject_order():
     # arrange: an authenticated vendor and a fake order service
-    with make_client({"user_id": VENDOR_UUID, "role": "vendor"}) as (client, service):
+    with make_client({"user_id": 7, "role": "vendor"}) as (client, service, vendor_menu_service):
         # act: receive a PATCH /vendor/orders/{order_id}/reject request
         response = client.patch(f"/vendor/orders/{ORDER_ID}/reject")
 
@@ -179,3 +195,4 @@ def test_vendor_can_reject_order():
         assert response.json()["id"] == ORDER_ID
         assert response.json()["status"] == "cancelled"
         assert service.reject_call == (ORDER_ID, VENDOR_UUID)
+        assert vendor_menu_service.current_vendor_call == 7
