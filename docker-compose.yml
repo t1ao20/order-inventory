@@ -13,11 +13,9 @@ services:
       REDIS_URL:    redis://redis:6379/0
       RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
       JWT_SECRET:   ${JWT_SECRET:-thisisasecret_shu}
-      LOGIN_SERVICE_URL: ${LOGIN_SERVICE_URL:-}
       NOTIFICATION_SERVICE_URL: ${NOTIFICATION_SERVICE_URL:-}
       MENU_SERVICE_URL: ${MENU_SERVICE_URL:-}
-      ADMIN_EMAIL: ${ADMIN_EMAIL:-}
-      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
+      ADMIN_USER_ID: ${ADMIN_USER_ID:-14}
     depends_on:
       postgres:
         condition: service_healthy
@@ -50,11 +48,9 @@ services:
       REDIS_URL:    redis://redis:6379/0
       RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
       JWT_SECRET:   ${JWT_SECRET:-thisisasecret_shu}
-      LOGIN_SERVICE_URL: ${LOGIN_SERVICE_URL:-}
       NOTIFICATION_SERVICE_URL: ${NOTIFICATION_SERVICE_URL:-}
       MENU_SERVICE_URL: ${MENU_SERVICE_URL:-}
-      ADMIN_EMAIL: ${ADMIN_EMAIL:-}
-      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
+      ADMIN_USER_ID: ${ADMIN_USER_ID:-14}
     volumes:
       - ${TEST_REPORT_DIR:-./reports}:/app/reports
 

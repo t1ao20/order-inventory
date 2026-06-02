@@ -80,6 +80,8 @@ async def get_vendor_orders_by_vendor_user_id(
     status: Optional[str] = Query(default=None),
 ):
     require_vendor_or_admin(user)
+    if user["role"] == "vendor" and user["user_id"] != vendor_user_id:
+        raise HTTPException(status_code=403, detail="Not your vendor orders")
 
     now = datetime.now(TW_TZ)
     today = now.date()

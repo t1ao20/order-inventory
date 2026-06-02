@@ -154,9 +154,9 @@ def test_vendor_can_get_custom_range_and_status():
         assert status == "completed"
 
 
-def test_vendor_can_get_orders_by_vendor_user_id():
-    # arrange: an authenticated vendor and a fake order service
-    with make_client({"user_id": 7, "role": "vendor"}) as (client, service, vendor_menu_service):
+def test_admin_can_get_orders_by_vendor_user_id():
+    # arrange: an authenticated admin and a fake order service
+    with make_client({"user_id": 7, "role": "admin"}) as (client, service, vendor_menu_service):
         today = tw_today()
         # act: receive a GET /vendor/orders/vendor/{vendor_user_id} request
 
@@ -173,6 +173,29 @@ def test_vendor_can_get_orders_by_vendor_user_id():
         assert from_date == today
         assert to_date == today
         assert status is None
+
+
+def test_vendor_can_get_own_orders_by_vendor_user_id():
+    # arrange: an authenticated vendor and a fake order service
+    with make_client({"user_id": 7, "role": "vendor"}) as (client, service, vendor_menu_service):
+        response = client.get("/vendor/orders/vendor/7", params={"range": "today"})
+
+        vendor_user_id, _, _, _ = service.vendor_orders_call
+        assert response.status_code == 200
+        assert response.json()["vendor_user_id"] == 7
+        assert vendor_user_id == 7
+        assert vendor_menu_service.current_vendor_call is None
+
+
+def test_vendor_cannot_get_other_vendor_user_orders():
+    # arrange: an authenticated vendor and a fake order service
+    with make_client({"user_id": 7, "role": "vendor"}) as (client, service, vendor_menu_service):
+        response = client.get("/vendor/orders/vendor/11", params={"range": "today"})
+
+        assert response.status_code == 403
+        assert response.json() == {"detail": "Not your vendor orders"}
+        assert service.vendor_orders_call is None
+        assert vendor_menu_service.current_vendor_call is None
 
 
 def test_employee_cannot_get_vendor_orders():

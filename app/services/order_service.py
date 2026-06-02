@@ -166,7 +166,7 @@ class OrderService:
         user_id = actor["user_id"]
         if role == "employee" and order.employee_id != user_id:
             raise HTTPException(status_code=403, detail="Not your order")
-        if role == "vendor" and order.vendor_id != user_id:
+        if role == "vendor" and order.vendor_user_id != user_id:
             raise HTTPException(status_code=403, detail="Not your vendor order")
         if role not in ("employee", "vendor", "admin"):
             raise HTTPException(status_code=403, detail="Unsupported role")
@@ -193,12 +193,12 @@ class OrderService:
                 raise HTTPException(status_code=403, detail="Employees can only cancel orders")
             await self.cancel_order(order_id, employee_id=user_id)
         elif role == "vendor":
-            if order.vendor_id != user_id:
+            if order.vendor_user_id != user_id:
                 raise HTTPException(status_code=403, detail="Not your vendor order")
             next_status = self._resolve_next_status(payload)
             if next_status != OrderStatus.cancelled:
                 raise HTTPException(status_code=403, detail="Vendors can only reject or cancel orders")
-            await self.cancel_vendor_order(order_id, vendor_id=user_id)
+            await self.cancel_vendor_order(order_id, vendor_id=order.vendor_id)
         elif role == "admin":
             next_status = self._resolve_next_status(payload)
             if next_status == OrderStatus.cancelled:
@@ -318,7 +318,7 @@ class OrderService:
             order_id=order_id,
             employee_id=order.employee_id,
             vendor_user_id=order.vendor_user_id,
-            vendor_id=vendor_id,
+            vendor_id=order.vendor_id,
             menu_id=order.menu_id,
             menu_name=order.menu_name,
             menu_tags=order.menu_tags,

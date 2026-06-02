@@ -7,15 +7,14 @@ class Settings(BaseSettings):
     RABBITMQ_URL: str = "amqp://guest:guest@localhost:5672/"
     NOTIFICATION_SERVICE_URL: str = ""
     MENU_SERVICE_URL: str = ""
-    LOGIN_SERVICE_URL: str = ""
     JWT_SECRET: str = "supersecret_change_me"
     JWT_ALGORITHM: str = "HS256"
     TEST_REPORT_DIR: str = "./reports"
-    ADMIN_EMAIL: str = ""
-    ADMIN_PASSWORD: str = ""
+    ADMIN_USER_ID: int = 14
 
     class Config:
         env_file = ".env"
+        extra = "ignore"
 
 
 settings = Settings()

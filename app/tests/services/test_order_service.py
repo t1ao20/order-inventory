@@ -320,7 +320,7 @@ def test_get_order_for_actor_allows_matching_vendor(monkeypatch):
     monkeypatch.setattr(order_service.rdb_mod, "get_redis", lambda: FakeRedis(cached=None))
 
     # act: get the order as the matching vendor
-    result = asyncio.run(svc.get_order_for_actor(ORDER_UUID, {"user_id": VENDOR_UUID, "role": "vendor"}))
+    result = asyncio.run(svc.get_order_for_actor(ORDER_UUID, {"user_id": 7, "role": "vendor"}))
 
     # assert: result should be the vendor order
     assert result.id == ORDER_UUID
@@ -830,7 +830,7 @@ def test_vendor_update_order_rejects_non_cancel_status():
         asyncio.run(
             svc.update_order(
                 ORDER_UUID,
-                actor={"user_id": VENDOR_UUID, "role": "vendor"},
+                actor={"user_id": 7, "role": "vendor"},
                 payload=UpdateOrderRequest(status=OrderStatus.completed),
             )
         )
@@ -1036,7 +1036,7 @@ def test_vendor_update_order_can_cancel_own_order(monkeypatch):
     result = asyncio.run(
         svc.update_order(
             ORDER_UUID,
-            actor={"user_id": VENDOR_UUID, "role": "vendor"},
+                actor={"user_id": 7, "role": "vendor"},
             payload=UpdateOrderRequest(status=OrderStatus.cancelled),
         )
     )
