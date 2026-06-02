@@ -68,10 +68,10 @@ async def get_vendor_orders(
     return {"orders": orders, "count": len(orders), "range": range_value, "status": status}
 
 
-# GET /vendor/orders/vendor/{vendor_id}
-@router.get("/vendor/{vendor_id}")
-async def get_vendor_orders_by_vendor_id(
-    vendor_id: UUID,
+# GET /vendor/orders/vendor/{vendor_user_id}
+@router.get("/vendor/{vendor_user_id}")
+async def get_vendor_orders_by_vendor_user_id(
+    vendor_user_id: int,
     user: Annotated[dict, Depends(get_current_user)],
     svc: OrderService = Depends(get_service),
     range: Optional[str] = Query(default=None),
@@ -95,13 +95,19 @@ async def get_vendor_orders_by_vendor_id(
         from_date = None
         to_date = today
 
-    orders = await svc.get_vendor_orders_by_vendor_id(
-        vendor_id=vendor_id,
+    orders = await svc.get_vendor_orders_by_vendor_user_id(
+        vendor_user_id=vendor_user_id,
         from_date=from_date,
         to_date=to_date,
         status=status,
     )
-    return {"orders": orders, "count": len(orders), "range": range_value, "status": status, "vendor_id": vendor_id}
+    return {
+        "orders": orders,
+        "count": len(orders),
+        "range": range_value,
+        "status": status,
+        "vendor_user_id": vendor_user_id,
+    }
 
 
 # PATCH /vendor/orders/{order_id}/reject

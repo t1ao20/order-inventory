@@ -26,6 +26,7 @@ def order_payload(order_id: UUID = ORDER_UUID, status: str = "confirmed", quanti
     return {
         "id": str(order_id),
         "employee_id": 1,
+        "vendor_user_id": 7,
         "vendor_id": str(VENDOR_UUID),
         "menu_id": str(MENU_UUID),
         "menu_name": "Lunch Box",
@@ -52,9 +53,12 @@ class FakeOrderService:
             order_payload(order_id=UUID(HISTORY_ORDER_ID), status="cancelled", quantity=2),
         ]
 
-    async def get_vendor_orders_by_vendor_id(self, vendor_id: UUID, from_date, to_date, status: Optional[str] = None) -> list[dict]:
-        self.vendor_orders_call = (vendor_id, from_date, to_date, status)
-        return await self.get_vendor_orders(vendor_id, from_date, to_date, status=status)
+    async def get_vendor_orders_by_vendor_user_id(self, vendor_user_id: int, from_date, to_date, status: Optional[str] = None) -> list[dict]:
+        self.vendor_orders_call = (vendor_user_id, from_date, to_date, status)
+        return [
+            order_payload(order_id=ORDER_UUID, status="confirmed", quantity=1),
+            order_payload(order_id=UUID(HISTORY_ORDER_ID), status="cancelled", quantity=2),
+        ]
 
     async def reject_vendor_order(self, order_id: UUID, vendor_id: UUID) -> dict:
         self.reject_call = (str(order_id), vendor_id)
@@ -150,21 +154,21 @@ def test_vendor_can_get_custom_range_and_status():
         assert status == "completed"
 
 
-def test_vendor_can_get_orders_by_vendor_id():
+def test_vendor_can_get_orders_by_vendor_user_id():
     # arrange: an authenticated vendor and a fake order service
     with make_client({"user_id": 7, "role": "vendor"}) as (client, service, vendor_menu_service):
         today = tw_today()
-        # act: receive a GET /vendor/orders/vendor/{vendor_id} request
+        # act: receive a GET /vendor/orders/vendor/{vendor_user_id} request
 
-        response = client.get(f"/vendor/orders/vendor/{str(VENDOR_UUID_11)}", params={"range": "today"})
+        response = client.get("/vendor/orders/vendor/11", params={"range": "today"})
 
-        # assert: response should use the path vendor id, not the JWT user id
-        vendor_id, from_date, to_date, status = service.vendor_orders_call
+        # assert: response should use the path vendor user id, not the JWT user id
+        vendor_user_id, from_date, to_date, status = service.vendor_orders_call
         assert response.status_code == 200
-        assert response.json()["vendor_id"] == str(VENDOR_UUID_11)
+        assert response.json()["vendor_user_id"] == 11
         assert response.json()["range"] == "today"
         assert response.json()["count"] == 2
-        assert vendor_id == VENDOR_UUID_11
+        assert vendor_user_id == 11
         assert vendor_menu_service.current_vendor_call is None
         assert from_date == today
         assert to_date == today

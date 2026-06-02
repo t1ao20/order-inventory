@@ -77,6 +77,7 @@ class FakeOrderRepository:
         self.get_today_order_call = None
         self.list_by_employee_call = None
         self.list_by_vendor_call = None
+        self.list_by_vendor_user_id_call = None
         self.list_today_by_vendor_call = None
 
     async def get_by_id(self, order_id: UUID):
@@ -94,6 +95,12 @@ class FakeOrderRepository:
 
     async def list_by_vendor(self, vendor_id: UUID, from_dt: datetime, to_dt: datetime):
         self.list_by_vendor_call = (vendor_id, from_dt, to_dt)
+        if self.vendor_orders is not None:
+            return self.vendor_orders
+        return [self.order] if self.order is not None else []
+
+    async def list_by_vendor_user_id(self, vendor_user_id: int, from_dt: datetime, to_dt: datetime):
+        self.list_by_vendor_user_id_call = (vendor_user_id, from_dt, to_dt)
         if self.vendor_orders is not None:
             return self.vendor_orders
         return [self.order] if self.order is not None else []
@@ -632,6 +639,33 @@ def test_get_vendor_orders_history_returns_orders(monkeypatch):
     # assert: repository should be called and return the same orders
     assert result == vendor_orders
     assert svc.order_repo.list_by_vendor_call == (VENDOR_UUID, from_dt.date(), to_dt.date())
+
+
+def test_get_vendor_orders_by_vendor_user_id_filters_orders(monkeypatch):
+    # arrange: an order service with vendor orders and a status filter
+    vendor_orders = [
+        make_order(order_id=ORDER_ID, status=OrderStatus.confirmed),
+        make_order(order_id="22222222-2222-4222-8222-222222222222", status=OrderStatus.cancelled),
+    ]
+    svc = OrderService()
+    svc.order_repo = FakeOrderRepository(vendor_orders=vendor_orders)
+    from_date = days_from_today(-30)
+    to_date = tw_today()
+    monkeypatch.setattr(order_service.rdb_mod, "get_redis", lambda: FakeRedis(cached=None))
+
+    # act: fetch vendor orders by vendor user id
+    result = asyncio.run(
+        svc.get_vendor_orders_by_vendor_user_id(
+            vendor_user_id=37,
+            from_date=from_date,
+            to_date=to_date,
+            status="cancelled",
+        )
+    )
+
+    # assert: repository should query by vendor_user_id and apply the status filter
+    assert [order.status for order in result] == [OrderStatus.cancelled]
+    assert svc.order_repo.list_by_vendor_user_id_call == (37, from_date, to_date)
 
 
 def test_cancel_vendor_order_updates_everything(monkeypatch):
