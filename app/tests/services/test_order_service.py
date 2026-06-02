@@ -526,8 +526,10 @@ def test_update_order_quantity_can_decrease_inventory(monkeypatch):
     svc.order_repo = FakeOrderRepository(order=order)
     svc.inventory_repo = FakeInventoryRepository()
     rdb = FakeRedis()
+    notify_calls = []
     monkeypatch.setattr(order_service.rdb_mod, "get_redis", lambda: rdb)
     monkeypatch.setattr(order_service.rdb_mod, "incr_inventory", lambda menu_id, target_date: asyncio.sleep(0, result=1))
+    monkeypatch.setattr(order_service, "notify_order_quantity_updated", lambda order_id, user_id, old_quantity=None, new_quantity=None: asyncio.sleep(0, result=notify_calls.append((order_id, user_id, old_quantity, new_quantity))))
 
     # act: decrease the quantity from 3 to 1
     result = asyncio.run(svc.update_order_quantity(ORDER_UUID, employee_id=1, quantity=1))
@@ -537,6 +539,7 @@ def test_update_order_quantity_can_decrease_inventory(monkeypatch):
     assert result.total_price == 120
     assert svc.inventory_repo.increment_call == (MENU_UUID, order.pickup_date, 2)
     assert svc.order_repo.update_quantity_call == (ORDER_ID, 1, 120)
+    assert notify_calls == [(ORDER_ID, 1, 3, 1)]
 
 
 def test_update_order_quantity_noop_when_same_quantity(monkeypatch):
@@ -921,12 +924,14 @@ def test_employee_update_order_can_increase_quantity(monkeypatch):
     svc.order_repo = FakeOrderRepository(order=order)
     svc.inventory_repo = FakeInventoryRepository()
     decr_calls = []
+    notify_calls = []
     monkeypatch.setattr(
         order_service.rdb_mod,
         "decr_inventory",
         lambda menu_id, target_date: asyncio.sleep(0, result=decr_calls.append((menu_id, target_date)) or 5),
     )
     monkeypatch.setattr(order_service.rdb_mod, "get_redis", lambda: FakeRedis(cached=None))
+    monkeypatch.setattr(order_service, "notify_order_quantity_updated", lambda order_id, user_id, old_quantity=None, new_quantity=None: asyncio.sleep(0, result=notify_calls.append((order_id, user_id, old_quantity, new_quantity))))
 
     # act: update the order quantity as the owning employee
     result = asyncio.run(
@@ -943,6 +948,7 @@ def test_employee_update_order_can_increase_quantity(monkeypatch):
     assert len(decr_calls) == 2
     assert svc.inventory_repo.decrement_call == (MENU_UUID, order.pickup_date, 2)
     assert svc.order_repo.update_quantity_call == (ORDER_ID, 3, 360)
+    assert notify_calls == [(ORDER_ID, 1, 1, 3)]
 
 
 def test_employee_update_order_quantity_allows_decrement_to_zero_stock(monkeypatch):
@@ -952,12 +958,14 @@ def test_employee_update_order_quantity_allows_decrement_to_zero_stock(monkeypat
     svc.order_repo = FakeOrderRepository(order=order)
     svc.inventory_repo = FakeInventoryRepository()
     decr_calls = []
+    notify_calls = []
     monkeypatch.setattr(
         order_service.rdb_mod,
         "decr_inventory",
         lambda menu_id, target_date: asyncio.sleep(0, result=decr_calls.append((menu_id, target_date)) or 0),
     )
     monkeypatch.setattr(order_service.rdb_mod, "get_redis", lambda: FakeRedis(cached=None))
+    monkeypatch.setattr(order_service, "notify_order_quantity_updated", lambda order_id, user_id, old_quantity=None, new_quantity=None: asyncio.sleep(0, result=notify_calls.append((order_id, user_id, old_quantity, new_quantity))))
 
     # act: increase the order by one when only one extra item remains
     result = asyncio.run(svc.update_order_quantity(ORDER_UUID, employee_id=1, quantity=2))
@@ -968,6 +976,7 @@ def test_employee_update_order_quantity_allows_decrement_to_zero_stock(monkeypat
     assert decr_calls == [(MENU_UUID, order.pickup_date.isoformat())]
     assert svc.inventory_repo.decrement_call == (MENU_UUID, order.pickup_date, 1)
     assert svc.order_repo.update_quantity_call == (ORDER_ID, 2, 240)
+    assert notify_calls == [(ORDER_ID, 1, 1, 2)]
 
 
 def test_employee_update_order_quantity_rolls_back_redis_when_db_decrement_fails(monkeypatch):

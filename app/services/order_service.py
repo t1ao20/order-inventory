@@ -11,7 +11,7 @@ from app.db import redis as rdb_mod, rabbitmq as mq_mod
 from app.models.order import Order, OrderEvent, OrderStatus, PlaceOrderRequest, UpdateOrderRequest
 from app.repositories.order_repository import OrderRepository
 from app.repositories.inventory_repository import InventoryRepository
-from app.services.notification_service import notify_order_cancelled
+from app.services.notification_service import notify_order_cancelled, notify_order_quantity_updated
 from app.services.vendor_menu_service import VendorMenuService
 
 ORDER_CREATED = "order.created"
@@ -401,6 +401,7 @@ class OrderService:
         if quantity == order.quantity:
             return
 
+        old_quantity = order.quantity
         diff = quantity - order.quantity
         target_date = order.pickup_date
         target_date_str = target_date.isoformat()
@@ -433,6 +434,12 @@ class OrderService:
             order.id,
             quantity,
             order.price_snapshot * quantity,
+        )
+        await notify_order_quantity_updated(
+            str(order.id),
+            order.employee_id,
+            old_quantity=old_quantity,
+            new_quantity=quantity,
         )
 
     async def _reserve_inventory(self, menu_id: UUID, target_date: str, quantity: int) -> int:
