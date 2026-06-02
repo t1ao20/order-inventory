@@ -781,7 +781,7 @@ def test_reject_vendor_order_delegates_to_cancel_and_fetch(monkeypatch):
     result = asyncio.run(svc.reject_vendor_order(ORDER_UUID, vendor_id=VENDOR_UUID))
 
     # assert: reject should call cancel first and then fetch the updated order
-    assert calls == [("cancel", ORDER_ID, VENDOR_UUID, "商家拒絕訂單"), ("fetch", ORDER_ID, VENDOR_UUID)]
+    assert calls == [("cancel", ORDER_ID, VENDOR_UUID, "商家取消訂單"), ("fetch", ORDER_ID, VENDOR_UUID)]
     assert result.status == OrderStatus.cancelled
 
 

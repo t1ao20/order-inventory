@@ -4,6 +4,8 @@ import logging
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from prometheus_fastapi_instrumentator import Instrumentator
+from pythonjsonlogger import jsonlogger
 
 from app.core.config import settings
 from app.db.postgres import init_db, close_db
@@ -14,7 +16,11 @@ from app.api.orders import router as orders_router
 from app.api.inventory import router as inventory_router
 from app.api.vendor_orders import router as vendor_orders_router
 
-logging.basicConfig(level=logging.INFO)
+
+handler = logging.StreamHandler()
+handler.setFormatter(jsonlogger.JsonFormatter())
+logging.getLogger().handlers = [handler]
+logging.getLogger().setLevel(logging.INFO)
 logger = logging.getLogger(__name__)
 
 
@@ -63,6 +69,7 @@ app.add_middleware(
 app.include_router(orders_router, prefix="/orders", tags=["orders"])
 app.include_router(vendor_orders_router, prefix="/vendor/orders", tags=["vendor-orders"])
 app.include_router(inventory_router, prefix="/inventory", tags=["inventory"])
+Instrumentator().instrument(app).expose(app)
 
 
 @app.get("/health", tags=["system"])
