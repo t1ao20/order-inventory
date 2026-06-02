@@ -111,3 +111,36 @@ class VendorMenuService:
                 raise HTTPException(status_code=502, detail="Invalid vendor response")
 
         return await asyncio.to_thread(_fetch)
+
+    async def get_menu(self, menu_id: UUID) -> dict:
+        login = await self._login_admin()
+        url = f"{self._base_url()}/api/v1/menus/{menu_id}"
+        req = request.Request(
+            url=url,
+            method="GET",
+            headers={"Authorization": f"Bearer {login['token']}"},
+        )
+
+        def _fetch() -> dict:
+            try:
+                with request.urlopen(req, timeout=3) as resp:
+                    body = resp.read().decode("utf-8")
+            except error.HTTPError as exc:
+                raise HTTPException(status_code=exc.code, detail="Failed to resolve menu")
+            except error.URLError:
+                raise HTTPException(status_code=503, detail="Menu service unavailable")
+
+            try:
+                menu = json.loads(body)
+                if (
+                    menu.get("vendorId") is None
+                    or menu.get("name") is None
+                    or menu.get("price") is None
+                    or not isinstance(menu.get("tags", []), list)
+                ):
+                    raise ValueError
+                return menu
+            except (TypeError, ValueError, json.JSONDecodeError):
+                raise HTTPException(status_code=502, detail="Invalid menu response")
+
+        return await asyncio.to_thread(_fetch)

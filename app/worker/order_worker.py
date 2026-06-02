@@ -39,6 +39,7 @@ class OrderWorker:
                 vendor_id=payload.get("vendor_id"),
                 menu_id=payload["menu_id"],
                 menu_name=payload.get("menu_name", ""),
+                menu_tags=payload.get("menu_tags", []),
                 price_snapshot=payload.get("price", 0),
                 quantity=payload.get("quantity", 1),
                 total_price=payload.get("price", 0) * payload.get("quantity", 1),

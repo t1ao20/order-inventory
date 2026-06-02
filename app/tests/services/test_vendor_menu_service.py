@@ -47,6 +47,27 @@ class FakeLoginResponse:
         return json.dumps({"token": "admin-token", "role": "admin", "userId": 14}).encode("utf-8")
 
 
+class FakeMenuResponse:
+    status = 200
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        return False
+
+    def read(self):
+        return json.dumps(
+            {
+                "id": str(VENDOR_UUID),
+                "vendorId": str(VENDOR_UUID),
+                "name": "Lunch Box",
+                "price": 120,
+                "tags": ["BEEF", "AMERICAN"],
+            }
+        ).encode("utf-8")
+
+
 def test_get_current_vendor_id_calls_vendor_menu_service(monkeypatch):
     service = VendorMenuService()
     captured = {}
@@ -102,5 +123,40 @@ def test_get_vendor_logs_in_and_calls_admin_vendor_endpoint(monkeypatch):
     }
     assert calls[0]["timeout"] == 3
     assert calls[1]["url"] == f"http://32.236.51.177:8000/api/v1/admin/vendors/{VENDOR_UUID}"
+    assert calls[1]["headers"]["Authorization"] == "Bearer admin-token"
+    assert calls[1]["timeout"] == 3
+
+
+def test_get_menu_calls_public_menu_endpoint(monkeypatch):
+    service = VendorMenuService()
+    calls = []
+    monkeypatch.setattr("app.services.vendor_menu_service.settings.LOGIN_SERVICE_URL", "172.31.6.25:3001")
+    monkeypatch.setattr("app.services.vendor_menu_service.settings.MENU_SERVICE_URL", "32.236.51.177:8000")
+    monkeypatch.setattr("app.services.vendor_menu_service.settings.ADMIN_EMAIL", "admin@example.com")
+    monkeypatch.setattr("app.services.vendor_menu_service.settings.ADMIN_PASSWORD", "secret")
+
+    def fake_urlopen(req, timeout):
+        calls.append(
+            {
+                "url": req.full_url,
+                "headers": req.headers,
+                "timeout": timeout,
+                "data": getattr(req, "data", None),
+            }
+        )
+        if req.full_url.endswith("/auth/login"):
+            return FakeLoginResponse()
+        return FakeMenuResponse()
+
+    monkeypatch.setattr("app.services.vendor_menu_service.request.urlopen", fake_urlopen)
+
+    result = asyncio.run(service.get_menu(VENDOR_UUID))
+
+    assert result["vendorId"] == str(VENDOR_UUID)
+    assert result["name"] == "Lunch Box"
+    assert result["price"] == 120
+    assert result["tags"] == ["BEEF", "AMERICAN"]
+    assert calls[0]["url"] == "http://172.31.6.25:3001/auth/login"
+    assert calls[1]["url"] == f"http://32.236.51.177:8000/api/v1/menus/{VENDOR_UUID}"
     assert calls[1]["headers"]["Authorization"] == "Bearer admin-token"
     assert calls[1]["timeout"] == 3

@@ -45,9 +45,14 @@ class OrderService:
         self._ensure_before_change_deadline(req.pickup_date, "Order change deadline passed")
         target_date = req.pickup_date.isoformat()
         try:
-            vendor_user_id = int((await self.vendor_menu_service.get_vendor(req.vendor_id))["userId"])
+            menu = await self.vendor_menu_service.get_menu(req.menu_id)
+            vendor_id = UUID(str(menu["vendorId"]))
+            menu_name = str(menu["name"])
+            price = int(menu["price"])
+            menu_tags = [str(tag) for tag in menu.get("tags", [])]
+            vendor_user_id = int((await self.vendor_menu_service.get_vendor(vendor_id))["userId"])
         except (KeyError, TypeError, ValueError):
-            raise HTTPException(status_code=502, detail="Invalid vendor response")
+            raise HTTPException(status_code=502, detail="Invalid menu or vendor response")
 
         # Step 1: Atomically reserve inventory in Redis for requested quantity
         reserved_qty = await self._reserve_inventory(req.menu_id, target_date, req.quantity)
@@ -59,16 +64,17 @@ class OrderService:
             id=order_id,
             employee_id=employee_id,
             vendor_user_id=vendor_user_id,
-            vendor_id=req.vendor_id,
+            vendor_id=vendor_id,
             menu_id=req.menu_id,
-            menu_name=req.menu_name,
-            price_snapshot=req.price,
+            menu_name=menu_name,
+            price_snapshot=price,
             quantity=req.quantity,
-            total_price=req.price * req.quantity,
+            total_price=price * req.quantity,
             order_date=now.date(),
             pickup_date=req.pickup_date,
             status=OrderStatus.pending,
             created_at=now,
+            menu_tags=menu_tags,
         )
 
         # Step 3: Cache live order status in Redis (TTL 24h)
@@ -81,14 +87,15 @@ class OrderService:
             order_id=order_id,
             employee_id=employee_id,
             vendor_user_id=vendor_user_id,
-            vendor_id=req.vendor_id,
+            vendor_id=vendor_id,
             menu_id=req.menu_id,
-            menu_name=req.menu_name,
-            price=req.price,
+            menu_name=menu_name,
+            price=price,
             quantity=req.quantity,
             pickup_date=target_date,
             status=OrderStatus.pending,
             timestamp=int(now.timestamp()),
+            menu_tags=menu_tags,
         )
         try:
             await mq_mod.publish(ORDER_CREATED, event.model_dump())
@@ -129,7 +136,11 @@ class OrderService:
             event=ORDER_CANCELLED,
             order_id=order_id,
             employee_id=employee_id,
+            vendor_user_id=order.vendor_user_id,
+            vendor_id=order.vendor_id,
             menu_id=order.menu_id,
+            menu_name=order.menu_name,
+            menu_tags=order.menu_tags,
             pickup_date=order.pickup_date.isoformat(),
             timestamp=int(time.time()),
         )
@@ -306,8 +317,11 @@ class OrderService:
             event=ORDER_CANCELLED,
             order_id=order_id,
             employee_id=order.employee_id,
+            vendor_user_id=order.vendor_user_id,
             vendor_id=vendor_id,
             menu_id=order.menu_id,
+            menu_name=order.menu_name,
+            menu_tags=order.menu_tags,
             pickup_date=order.pickup_date.isoformat(),
             timestamp=int(time.time()),
         )
@@ -423,8 +437,11 @@ class OrderService:
             event=ORDER_CANCELLED,
             order_id=order.id,
             employee_id=order.employee_id,
+            vendor_user_id=order.vendor_user_id,
             vendor_id=order.vendor_id,
             menu_id=order.menu_id,
+            menu_name=order.menu_name,
+            menu_tags=order.menu_tags,
             pickup_date=order.pickup_date.isoformat(),
             timestamp=int(time.time()),
         )

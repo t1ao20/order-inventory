@@ -15,12 +15,12 @@ class OrderRepository:
         await pool.execute(
             """
             INSERT INTO orders
-                (id, employee_id, vendor_user_id, vendor_id, menu_id, menu_name, price_snapshot,
+                (id, employee_id, vendor_user_id, vendor_id, menu_id, menu_name, menu_tags, price_snapshot,
                  quantity, total_price, order_date, pickup_date, status, created_at)
-            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
             """,
             order.id, order.employee_id, order.vendor_user_id, order.vendor_id,
-            order.menu_id, order.menu_name, order.price_snapshot, order.quantity,
+            order.menu_id, order.menu_name, order.menu_tags, order.price_snapshot, order.quantity,
             order.total_price, order.order_date, order.pickup_date,
             order.status.value, order.created_at,
         )
@@ -29,7 +29,7 @@ class OrderRepository:
         pool = get_pool()
         row = await pool.fetchrow(
             """
-            SELECT id, employee_id, vendor_user_id, vendor_id, menu_id, menu_name, price_snapshot,
+            SELECT id, employee_id, vendor_user_id, vendor_id, menu_id, menu_name, menu_tags, price_snapshot,
                    quantity, total_price, order_date, pickup_date, status, created_at
             FROM orders WHERE id = $1
             """,
@@ -58,7 +58,7 @@ class OrderRepository:
     ) -> list[Order]:
         pool = get_pool()
         query = (
-            "SELECT id, employee_id, vendor_user_id, vendor_id, menu_id, menu_name, price_snapshot, "
+            "SELECT id, employee_id, vendor_user_id, vendor_id, menu_id, menu_name, menu_tags, price_snapshot, "
             "       quantity, total_price, order_date, pickup_date, status, created_at "
             "FROM orders WHERE employee_id = $1"
         )
@@ -80,7 +80,7 @@ class OrderRepository:
     ) -> list[Order]:
         pool = get_pool()
         query = (
-            "SELECT id, employee_id, vendor_user_id, vendor_id, menu_id, menu_name, price_snapshot, "
+            "SELECT id, employee_id, vendor_user_id, vendor_id, menu_id, menu_name, menu_tags, price_snapshot, "
             "       quantity, total_price, order_date, pickup_date, status, created_at "
             "FROM orders WHERE vendor_id = $1"
         )
@@ -102,7 +102,7 @@ class OrderRepository:
     ) -> list[Order]:
         pool = get_pool()
         query = (
-            "SELECT id, employee_id, vendor_user_id, vendor_id, menu_id, menu_name, price_snapshot, "
+            "SELECT id, employee_id, vendor_user_id, vendor_id, menu_id, menu_name, menu_tags, price_snapshot, "
             "       quantity, total_price, order_date, pickup_date, status, created_at "
             "FROM orders WHERE vendor_user_id = $1"
         )
@@ -123,7 +123,7 @@ class OrderRepository:
         pool = get_pool()
         row = await pool.fetchrow(
             """
-            SELECT id, employee_id, vendor_user_id, vendor_id, menu_id, menu_name, price_snapshot,
+            SELECT id, employee_id, vendor_user_id, vendor_id, menu_id, menu_name, menu_tags, price_snapshot,
                    quantity, total_price, order_date, pickup_date, status, created_at
             FROM orders
                         WHERE employee_id = $1 AND pickup_date = CURRENT_DATE
@@ -138,7 +138,7 @@ class OrderRepository:
         pool = get_pool()
         rows = await pool.fetch(
             """
-            SELECT id, employee_id, vendor_user_id, vendor_id, menu_id, menu_name, price_snapshot,
+            SELECT id, employee_id, vendor_user_id, vendor_id, menu_id, menu_name, menu_tags, price_snapshot,
                    quantity, total_price, order_date, pickup_date, status, created_at
             FROM orders
                         WHERE vendor_id = $1 AND pickup_date = CURRENT_DATE
@@ -153,7 +153,7 @@ class OrderRepository:
         pool = get_pool()
         rows = await pool.fetch(
             """
-            SELECT id, employee_id, vendor_user_id, vendor_id, menu_id, menu_name, price_snapshot,
+            SELECT id, employee_id, vendor_user_id, vendor_id, menu_id, menu_name, menu_tags, price_snapshot,
                    quantity, total_price, order_date, pickup_date, status, created_at
             FROM orders
             WHERE menu_id = $1

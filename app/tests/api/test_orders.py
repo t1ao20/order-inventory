@@ -110,10 +110,7 @@ def test_create_order_uses_authenticated_employee():
         response = client.post(
             "/orders",
             json={
-                "vendor_id": str(VENDOR_UUID),
                 "menu_id": str(MENU_UUID),
-                "menu_name": "Lunch Box",
-                "price": 120,
                 "quantity": 2,
                 "pickup_date": days_from_today(8).isoformat(),
             },
@@ -140,10 +137,7 @@ def test_create_order_returns_conflict_when_out_of_stock():
         response = client.post(
             "/orders",
             json={
-                "vendor_id": str(VENDOR_UUID),
                 "menu_id": str(MENU_UUID),
-                "menu_name": "Lunch Box",
-                "price": 120,
                 "quantity": 2,
                 "pickup_date": days_from_today(8).isoformat(),
             },

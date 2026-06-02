@@ -7,6 +7,7 @@ CREATE TABLE IF NOT EXISTS orders (
     vendor_id       UUID         NOT NULL,
     menu_id         UUID         NOT NULL,
     menu_name       VARCHAR(255) NOT NULL,
+    menu_tags       TEXT[]       NOT NULL DEFAULT '{}',
     price_snapshot  BIGINT       NOT NULL,
     quantity        INT          NOT NULL DEFAULT 1,
     total_price     BIGINT       NOT NULL,
@@ -15,6 +16,8 @@ CREATE TABLE IF NOT EXISTS orders (
     status          VARCHAR(20)  NOT NULL DEFAULT 'pending',
     created_at      TIMESTAMPTZ  NOT NULL DEFAULT NOW()
 );
+
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS menu_tags TEXT[] NOT NULL DEFAULT '{}';
 
 CREATE INDEX IF NOT EXISTS idx_orders_employee_id   ON orders (employee_id);
 CREATE INDEX IF NOT EXISTS idx_orders_order_date    ON orders (order_date);

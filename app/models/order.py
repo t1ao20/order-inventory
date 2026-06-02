@@ -47,10 +47,7 @@ class DailyInventory(BaseModel):
 # ── Request schemas ────────────────────────────────────────────
 
 class PlaceOrderRequest(BaseModel):
-    vendor_id: UUID
     menu_id: UUID
-    menu_name: str
-    price: int = Field(..., description="Unit price in cents", gt=0)
     quantity: int = Field(1, ge=1)
     pickup_date: date
 

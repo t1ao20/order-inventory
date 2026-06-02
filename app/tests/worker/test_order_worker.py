@@ -26,6 +26,7 @@ def test_handle_created_reraises_write_failure():
         "vendor_id": "00000000-0000-4000-8000-000000000007",
         "menu_id": "00000000-0000-4000-8000-000000000042",
         "menu_name": "Lunch Box",
+        "menu_tags": ["BEEF", "AMERICAN"],
         "price": 120,
         "quantity": 2,
         "pickup_date": "2026-06-10",

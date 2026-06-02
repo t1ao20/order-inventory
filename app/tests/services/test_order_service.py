@@ -142,7 +142,18 @@ class FakeInventoryRepository:
 class FakeVendorMenuService:
     def __init__(self, vendor_user_id: int = 7):
         self.vendor_user_id = vendor_user_id
+        self.menu_call = None
         self.vendor_call = None
+
+    async def get_menu(self, menu_id: UUID) -> dict:
+        self.menu_call = menu_id
+        return {
+            "id": str(menu_id),
+            "vendorId": str(VENDOR_UUID),
+            "name": "Lunch Box",
+            "price": 120,
+            "tags": ["BEEF", "AMERICAN"],
+        }
 
     async def get_vendor(self, vendor_id: UUID) -> dict:
         self.vendor_call = vendor_id
@@ -166,10 +177,7 @@ def test_create_order_raises_conflict_when_out_of_stock(monkeypatch):
     svc = OrderService()
     svc.vendor_menu_service = FakeVendorMenuService(vendor_user_id=7)
     req = PlaceOrderRequest(
-        vendor_id=VENDOR_UUID,
         menu_id=MENU_UUID,
-        menu_name="Lunch Box",
-        price=120,
         quantity=2,
         pickup_date=days_from_today(8),
     )
@@ -189,10 +197,7 @@ def test_create_order_success_persists_pending_state_and_publishes(monkeypatch):
     svc = OrderService()
     svc.vendor_menu_service = FakeVendorMenuService(vendor_user_id=7)
     req = PlaceOrderRequest(
-        vendor_id=VENDOR_UUID,
         menu_id=MENU_UUID,
-        menu_name="Lunch Box",
-        price=120,
         quantity=2,
         pickup_date=days_from_today(8),
     )
@@ -221,6 +226,9 @@ def test_create_order_success_persists_pending_state_and_publishes(monkeypatch):
     assert publish_calls[0][1]["employee_id"] == 9
     assert publish_calls[0][1]["vendor_user_id"] == 7
     assert publish_calls[0][1]["vendor_id"] == VENDOR_UUID
+    assert publish_calls[0][1]["menu_name"] == "Lunch Box"
+    assert publish_calls[0][1]["price"] == 120
+    assert publish_calls[0][1]["menu_tags"] == ["BEEF", "AMERICAN"]
     assert publish_calls[0][1]["quantity"] == 2
     assert publish_calls[0][1]["pickup_date"] == req.pickup_date.isoformat()
     assert reserve_calls == [(MENU_UUID, req.pickup_date.isoformat(), 2)]
@@ -231,10 +239,7 @@ def test_create_order_rolls_back_when_queue_publish_fails(monkeypatch):
     svc = OrderService()
     svc.vendor_menu_service = FakeVendorMenuService(vendor_user_id=7)
     req = PlaceOrderRequest(
-        vendor_id=VENDOR_UUID,
         menu_id=MENU_UUID,
-        menu_name="Lunch Box",
-        price=120,
         quantity=2,
         pickup_date=days_from_today(8),
     )
@@ -267,10 +272,7 @@ def test_create_order_rejects_after_deadline():
     # arrange: an order service at 17:01 on the day before pickup
     svc = OrderService()
     req = PlaceOrderRequest(
-        vendor_id=VENDOR_UUID,
         menu_id=MENU_UUID,
-        menu_name="Lunch Box",
-        price=120,
         quantity=1,
         pickup_date=days_from_today(8),
     )
