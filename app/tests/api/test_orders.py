@@ -25,6 +25,7 @@ def order_payload(order_id: UUID = ORDER_UUID, status: str = "confirmed", quanti
     return {
         "id": str(order_id),
         "employee_id": 1,
+        "vendor_user_id": 7,
         "vendor_id": str(VENDOR_UUID),
         "menu_id": str(MENU_UUID),
         "menu_name": "Lunch Box",

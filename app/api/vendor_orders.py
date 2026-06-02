@@ -23,6 +23,10 @@ def get_vendor_menu_service() -> VendorMenuService:
 
 
 def require_vendor(user: dict) -> None:
+    if user["role"] != "vendor":
+        raise HTTPException(status_code=403, detail="Only vendors can access vendor orders")
+
+def require_vendor_or_admin(user: dict) -> None:
     if user["role"] not in ("vendor", "admin"):
         raise HTTPException(status_code=403, detail="Only vendors/admin can access vendor orders")
 
@@ -38,7 +42,7 @@ async def get_vendor_orders(
     to_date: Optional[date] = Query(default=None, alias="to"),
     status: Optional[str] = Query(default=None),
 ):
-    require_vendor(user)
+    require_vendor_or_admin(user)
 
     now = datetime.now(TW_TZ)
     today = now.date()
@@ -75,7 +79,7 @@ async def get_vendor_orders_by_vendor_id(
     to_date: Optional[date] = Query(default=None, alias="to"),
     status: Optional[str] = Query(default=None),
 ):
-    require_vendor(user)
+    require_vendor_or_admin(user)
 
     now = datetime.now(TW_TZ)
     today = now.date()

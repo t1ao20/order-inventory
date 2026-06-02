@@ -22,6 +22,7 @@ def test_handle_created_reraises_write_failure():
     payload = {
         "order_id": "11111111-1111-4111-8111-111111111111",
         "employee_id": 1,
+        "vendor_user_id": 7,
         "vendor_id": "00000000-0000-4000-8000-000000000007",
         "menu_id": "00000000-0000-4000-8000-000000000042",
         "menu_name": "Lunch Box",

@@ -24,6 +24,7 @@ def make_order(
     *,
     order_id: UUID = ORDER_UUID,
     employee_id: int = 1,
+    vendor_user_id: int = 7,
     vendor_id: UUID = VENDOR_UUID,
     quantity: int = 1,
     status: OrderStatus = OrderStatus.confirmed,
@@ -32,6 +33,7 @@ def make_order(
     return Order(
         id=order_id,
         employee_id=employee_id,
+        vendor_user_id=vendor_user_id,
         vendor_id=vendor_id,
         menu_id=MENU_UUID,
         menu_name="Lunch Box",
@@ -130,6 +132,16 @@ class FakeInventoryRepository:
         self.increment_call = (menu_id, target_date, qty)
 
 
+class FakeVendorMenuService:
+    def __init__(self, vendor_user_id: int = 7):
+        self.vendor_user_id = vendor_user_id
+        self.vendor_call = None
+
+    async def get_vendor(self, vendor_id: UUID) -> dict:
+        self.vendor_call = vendor_id
+        return {"id": str(vendor_id), "userId": self.vendor_user_id}
+
+
 def test_resolve_next_status_prefers_status():
     # arrange: an order service and a payload with explicit status
     svc = OrderService()
@@ -145,6 +157,7 @@ def test_resolve_next_status_prefers_status():
 def test_create_order_raises_conflict_when_out_of_stock(monkeypatch):
     # arrange: an order service and Redis inventory decrement returning sold out
     svc = OrderService()
+    svc.vendor_menu_service = FakeVendorMenuService(vendor_user_id=7)
     req = PlaceOrderRequest(
         vendor_id=VENDOR_UUID,
         menu_id=MENU_UUID,
@@ -167,6 +180,7 @@ def test_create_order_raises_conflict_when_out_of_stock(monkeypatch):
 def test_create_order_success_persists_pending_state_and_publishes(monkeypatch):
     # arrange: an order service with stock available and a fake Redis cache
     svc = OrderService()
+    svc.vendor_menu_service = FakeVendorMenuService(vendor_user_id=7)
     req = PlaceOrderRequest(
         vendor_id=VENDOR_UUID,
         menu_id=MENU_UUID,
@@ -198,6 +212,7 @@ def test_create_order_success_persists_pending_state_and_publishes(monkeypatch):
     assert publish_calls[0][0] == order_service.ORDER_CREATED
     assert str(publish_calls[0][1]["order_id"]) == "12345678-1234-4123-8123-123456789abc"
     assert publish_calls[0][1]["employee_id"] == 9
+    assert publish_calls[0][1]["vendor_user_id"] == 7
     assert publish_calls[0][1]["vendor_id"] == VENDOR_UUID
     assert publish_calls[0][1]["quantity"] == 2
     assert publish_calls[0][1]["pickup_date"] == req.pickup_date.isoformat()
@@ -207,6 +222,7 @@ def test_create_order_success_persists_pending_state_and_publishes(monkeypatch):
 def test_create_order_rolls_back_when_queue_publish_fails(monkeypatch):
     # arrange: an order service with stock available and a broken RabbitMQ publish
     svc = OrderService()
+    svc.vendor_menu_service = FakeVendorMenuService(vendor_user_id=7)
     req = PlaceOrderRequest(
         vendor_id=VENDOR_UUID,
         menu_id=MENU_UUID,

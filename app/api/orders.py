@@ -22,6 +22,9 @@ def require_employee(user: dict) -> None:
     if user["role"] != "employee":
         raise HTTPException(status_code=403, detail="Only employees can access employee orders")
 
+def require_employee_or_admin(user: dict) -> None:
+    if user["role"] not in ("employee", "admin"):
+        raise HTTPException(status_code=403, detail="Only employees and admins can access this endpoint")
 
 # POST /orders
 @router.post("", status_code=201)
@@ -75,7 +78,7 @@ async def get_orders_by_employee_id(
     to_date: Optional[date] = Query(default=None, alias="to"),
     status: Optional[str] = Query(default=None),
 ):
-    require_employee(user)
+    require_employee_or_admin(user)
 
     now = datetime.now(TW_TZ)
     today = now.date()

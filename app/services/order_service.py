@@ -12,6 +12,7 @@ from app.models.order import Order, OrderEvent, OrderStatus, PlaceOrderRequest, 
 from app.repositories.order_repository import OrderRepository
 from app.repositories.inventory_repository import InventoryRepository
 from app.services.notification_service import notify_order_cancelled
+from app.services.vendor_menu_service import VendorMenuService
 
 ORDER_CREATED = "order.created"
 ORDER_CANCELLED = "order.cancelled"
@@ -22,6 +23,7 @@ class OrderService:
     def __init__(self):
         self.order_repo = OrderRepository()
         self.inventory_repo = InventoryRepository()
+        self.vendor_menu_service = VendorMenuService()
 
     def _now(self) -> datetime:
         return datetime.now(TW_TZ)
@@ -42,6 +44,10 @@ class OrderService:
     async def create_order(self, req: PlaceOrderRequest, employee_id: int) -> dict:
         self._ensure_before_change_deadline(req.pickup_date, "Order change deadline passed")
         target_date = req.pickup_date.isoformat()
+        try:
+            vendor_user_id = int((await self.vendor_menu_service.get_vendor(req.vendor_id))["userId"])
+        except (KeyError, TypeError, ValueError):
+            raise HTTPException(status_code=502, detail="Invalid vendor response")
 
         # Step 1: Atomically reserve inventory in Redis for requested quantity
         reserved_qty = await self._reserve_inventory(req.menu_id, target_date, req.quantity)
@@ -52,6 +58,7 @@ class OrderService:
         order = Order(
             id=order_id,
             employee_id=employee_id,
+            vendor_user_id=vendor_user_id,
             vendor_id=req.vendor_id,
             menu_id=req.menu_id,
             menu_name=req.menu_name,
@@ -73,6 +80,7 @@ class OrderService:
             event=ORDER_CREATED,
             order_id=order_id,
             employee_id=employee_id,
+            vendor_user_id=vendor_user_id,
             vendor_id=req.vendor_id,
             menu_id=req.menu_id,
             menu_name=req.menu_name,

@@ -35,6 +35,7 @@ class OrderWorker:
             order = Order(
                 id=order_id,
                 employee_id=payload["employee_id"],
+                vendor_user_id=payload["vendor_user_id"],
                 vendor_id=payload.get("vendor_id"),
                 menu_id=payload["menu_id"],
                 menu_name=payload.get("menu_name", ""),

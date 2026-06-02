@@ -73,6 +73,7 @@ def make_order(order_id: UUID, quantity: int, created_minutes_ago: int) -> Order
     return Order(
         id=order_id,
         employee_id=1,
+        vendor_user_id=7,
         vendor_id=UUID("00000000-0000-4000-8000-000000000007"),
         menu_id=MENU_UUID,
         menu_name="Lunch Box",

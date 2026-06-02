@@ -18,6 +18,7 @@ class OrderStatus(str, Enum):
 class Order(BaseModel):
     id: UUID
     employee_id: int
+    vendor_user_id: int
     vendor_id: UUID
     menu_id: UUID
     menu_name: str          # price snapshot
@@ -75,6 +76,7 @@ class OrderEvent(BaseModel):
     event: str
     order_id: UUID
     employee_id: int
+    vendor_user_id: Optional[int] = None
     vendor_id: Optional[UUID] = None
     menu_id: UUID
     menu_name: str = ""

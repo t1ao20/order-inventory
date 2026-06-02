@@ -3,6 +3,7 @@
 CREATE TABLE IF NOT EXISTS orders (
     id              UUID PRIMARY KEY,
     employee_id     BIGINT       NOT NULL,
+    vendor_user_id  BIGINT         NOT NULL,
     vendor_id       UUID         NOT NULL,
     menu_id         UUID         NOT NULL,
     menu_name       VARCHAR(255) NOT NULL,
