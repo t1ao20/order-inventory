@@ -6,7 +6,7 @@ from zoneinfo import ZoneInfo
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from app.core.auth import get_current_user
-from app.models.order import Order
+from app.models.order import CancelOrderRequest, Order
 from app.services.order_service import OrderService
 from app.services.vendor_menu_service import VendorMenuService
 
@@ -117,9 +117,11 @@ async def get_vendor_orders_by_vendor_user_id(
 async def reject_vendor_order(
     order_id: UUID,
     user: Annotated[dict, Depends(get_current_user)],
+    req: Optional[CancelOrderRequest] = None,
     svc: OrderService = Depends(get_service),
     vendor_menu_svc: VendorMenuService = Depends(get_vendor_menu_service),
 ):
     require_vendor(user)
     vendor_id = await vendor_menu_svc.get_current_vendor_id(user["user_id"])
-    return await svc.reject_vendor_order(order_id, vendor_id=vendor_id)
+    cancel_reason = req.cancel_reason if req is not None else None
+    return await svc.reject_vendor_order(order_id, vendor_id=vendor_id, cancel_reason=cancel_reason)

@@ -109,7 +109,7 @@ class OrderService:
         return {"order_id": str(order_id), "status": "pending", "message": "order queued"}
 
     # ── Cancel Order ───────────────────────────────────────────
-    async def cancel_order(self, order_id: UUID, employee_id: int) -> None:
+    async def cancel_order(self, order_id: UUID, employee_id: int, cancel_reason: Optional[str] = None) -> None:
         order = await self.order_repo.get_by_id(order_id)
         if not order:
             raise HTTPException(status_code=404, detail="Order not found")
@@ -122,6 +122,7 @@ class OrderService:
         if self._now() > self._change_deadline(order.pickup_date):
             raise HTTPException(status_code=422, detail="Cancellation deadline passed")
 
+        reason = self._normalize_cancel_reason(cancel_reason, "使用者自行取消訂單")
         await self.order_repo.update_status(order_id, OrderStatus.cancelled)
 
         # Restore Redis inventory for the pickup date
@@ -141,11 +142,12 @@ class OrderService:
             menu_id=order.menu_id,
             menu_name=order.menu_name,
             menu_tags=order.menu_tags,
+            cancel_reason=reason,
             pickup_date=order.pickup_date.isoformat(),
             timestamp=int(time.time()),
         )
         await mq_mod.publish(ORDER_CANCELLED, event.model_dump())
-        await notify_order_cancelled(str(order_id), order.employee_id)
+        await notify_order_cancelled(str(order_id), order.employee_id, reason)
 
     # ── Get Order ──────────────────────────────────────────────
     async def get_order(self, order_id: UUID, employee_id: int) -> Order:
@@ -191,18 +193,18 @@ class OrderService:
             next_status = self._resolve_next_status(payload)
             if next_status != OrderStatus.cancelled:
                 raise HTTPException(status_code=403, detail="Employees can only cancel orders")
-            await self.cancel_order(order_id, employee_id=user_id)
+            await self.cancel_order(order_id, employee_id=user_id, cancel_reason=payload.cancel_reason)
         elif role == "vendor":
             if order.vendor_user_id != user_id:
                 raise HTTPException(status_code=403, detail="Not your vendor order")
             next_status = self._resolve_next_status(payload)
             if next_status != OrderStatus.cancelled:
                 raise HTTPException(status_code=403, detail="Vendors can only reject or cancel orders")
-            await self.cancel_vendor_order(order_id, vendor_id=order.vendor_id)
+            await self.cancel_vendor_order(order_id, vendor_id=order.vendor_id, cancel_reason=payload.cancel_reason)
         elif role == "admin":
             next_status = self._resolve_next_status(payload)
             if next_status == OrderStatus.cancelled:
-                await self._cancel_loaded_order(order, actor)
+                await self._cancel_loaded_order(order, actor, cancel_reason=payload.cancel_reason)
             else:
                 await self.order_repo.update_status(order_id, next_status)
                 await self._cache_status(order_id, next_status)
@@ -295,7 +297,12 @@ class OrderService:
             orders = [order for order in orders if order.status.value == status]
         return orders
 
-    async def cancel_vendor_order(self, order_id: UUID, vendor_id: UUID) -> None:
+    async def cancel_vendor_order(
+        self,
+        order_id: UUID,
+        vendor_id: UUID,
+        cancel_reason: Optional[str] = None,
+    ) -> None:
         order = await self.order_repo.get_by_id(order_id)
         if not order:
             raise HTTPException(status_code=404, detail="Order not found")
@@ -306,6 +313,7 @@ class OrderService:
 
         self._ensure_before_change_deadline(order.pickup_date, "Order change deadline passed")
 
+        reason = self._normalize_cancel_reason(cancel_reason, "商家取消訂單")
         await self.order_repo.update_status(order_id, OrderStatus.cancelled)
 
         await self._restore_order_inventory(order)
@@ -322,14 +330,21 @@ class OrderService:
             menu_id=order.menu_id,
             menu_name=order.menu_name,
             menu_tags=order.menu_tags,
+            cancel_reason=reason,
             pickup_date=order.pickup_date.isoformat(),
             timestamp=int(time.time()),
         )
         await mq_mod.publish(ORDER_CANCELLED, event.model_dump())
-        await notify_order_cancelled(str(order_id), order.employee_id)
+        await notify_order_cancelled(str(order_id), order.employee_id, reason)
 
-    async def reject_vendor_order(self, order_id: UUID, vendor_id: UUID) -> Order:
-        await self.cancel_vendor_order(order_id, vendor_id)
+    async def reject_vendor_order(
+        self,
+        order_id: UUID,
+        vendor_id: UUID,
+        cancel_reason: Optional[str] = None,
+    ) -> Order:
+        reason = self._normalize_cancel_reason(cancel_reason, "商家取消訂單")
+        await self.cancel_vendor_order(order_id, vendor_id, cancel_reason=reason)
         return await self.get_vendor_order(order_id, vendor_id)
 
     async def get_vendor_orders_today(self, vendor_id: UUID) -> list[Order]:
@@ -363,6 +378,12 @@ class OrderService:
         if action in ("cancel", "cancelled", "reject", "rejected"):
             return OrderStatus.cancelled
         raise HTTPException(status_code=400, detail="Unsupported action")
+
+    def _normalize_cancel_reason(self, cancel_reason: Optional[str], default_reason: str) -> str:
+        if cancel_reason is None:
+            return default_reason
+        reason = cancel_reason.strip()
+        return reason or default_reason
 
     async def _cache_status(self, order_id: UUID, status_value: OrderStatus) -> None:
         rdb = rdb_mod.get_redis()
@@ -422,12 +443,20 @@ class OrderService:
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Out of stock")
         return quantity
 
-    async def _cancel_loaded_order(self, order: Order, actor: dict) -> None:
+    async def _cancel_loaded_order(
+        self,
+        order: Order,
+        actor: dict,
+        cancel_reason: Optional[str] = None,
+    ) -> None:
         if order.status == OrderStatus.cancelled:
             raise HTTPException(status_code=422, detail="Already cancelled")
 
         self._ensure_before_change_deadline(order.pickup_date, "Order change deadline passed")
 
+        actor_role = actor.get("role", "admin")
+        default_reason = "管理員取消訂單" if actor_role == "admin" else "訂單已取消"
+        reason = self._normalize_cancel_reason(cancel_reason, default_reason)
         await self.order_repo.update_status(order.id, OrderStatus.cancelled)
 
         await self._restore_order_inventory(order)
@@ -442,8 +471,9 @@ class OrderService:
             menu_id=order.menu_id,
             menu_name=order.menu_name,
             menu_tags=order.menu_tags,
+            cancel_reason=reason,
             pickup_date=order.pickup_date.isoformat(),
             timestamp=int(time.time()),
         )
         await mq_mod.publish(ORDER_CANCELLED, event.model_dump())
-        await notify_order_cancelled(str(order.id), order.employee_id)
+        await notify_order_cancelled(str(order.id), order.employee_id, reason)

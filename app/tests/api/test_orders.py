@@ -79,10 +79,10 @@ class FakeOrderService:
         updated["quantity"] = quantity
         updated["total_price"] = 120 * quantity
         return updated
-    async def cancel_order(self, order_id: UUID, employee_id: int) -> None:
-        self.cancel_order_call = (str(order_id), employee_id)
+    async def cancel_order(self, order_id: UUID, employee_id: int, cancel_reason=None) -> None:
+        self.cancel_order_call = (str(order_id), employee_id, cancel_reason)
 
-    async def reject_vendor_order(self, order_id: UUID, vendor_id: UUID) -> dict:
+    async def reject_vendor_order(self, order_id: UUID, vendor_id: UUID, cancel_reason=None) -> dict:
         raise HTTPException(status_code=500, detail="not used in employee tests")
     
 
@@ -305,7 +305,7 @@ def test_employee_can_cancel_own_order():
         assert response.status_code == 200
         assert response.json()["id"] == OTHER_ORDER_ID
         assert response.json()["status"] == "confirmed"
-        assert service.cancel_order_call == (OTHER_ORDER_ID, 1)
+        assert service.cancel_order_call == (OTHER_ORDER_ID, 1, None)
 
 
 def test_employee_can_update_order_quantity_through_patch():

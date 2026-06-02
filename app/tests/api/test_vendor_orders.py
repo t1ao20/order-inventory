@@ -60,8 +60,8 @@ class FakeOrderService:
             order_payload(order_id=UUID(HISTORY_ORDER_ID), status="cancelled", quantity=2),
         ]
 
-    async def reject_vendor_order(self, order_id: UUID, vendor_id: UUID) -> dict:
-        self.reject_call = (str(order_id), vendor_id)
+    async def reject_vendor_order(self, order_id: UUID, vendor_id: UUID, cancel_reason=None) -> dict:
+        self.reject_call = (str(order_id), vendor_id, cancel_reason)
         return order_payload(order_id=order_id, status="cancelled")
 
 
@@ -221,5 +221,5 @@ def test_vendor_can_reject_order():
         assert response.status_code == 200
         assert response.json()["id"] == ORDER_ID
         assert response.json()["status"] == "cancelled"
-        assert service.reject_call == (ORDER_ID, VENDOR_UUID)
+        assert service.reject_call == (ORDER_ID, VENDOR_UUID, None)
         assert vendor_menu_service.current_vendor_call == 7

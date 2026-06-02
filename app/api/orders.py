@@ -7,7 +7,7 @@ from zoneinfo import ZoneInfo
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from app.core.auth import get_current_user
-from app.models.order import Order, PlaceOrderRequest, UpdateOrderQuantityRequest
+from app.models.order import CancelOrderRequest, Order, PlaceOrderRequest, UpdateOrderQuantityRequest
 from app.services.order_service import OrderService
 
 router = APIRouter()
@@ -125,8 +125,10 @@ async def update_order_quantity(
 async def cancel_order(
     order_id: UUID,
     user: Annotated[dict, Depends(get_current_user)],
+    req: Optional[CancelOrderRequest] = None,
     svc: OrderService = Depends(get_service),
 ):
     require_employee(user)
-    await svc.cancel_order(order_id, employee_id=user["user_id"])
+    cancel_reason = req.cancel_reason if req is not None else None
+    await svc.cancel_order(order_id, employee_id=user["user_id"], cancel_reason=cancel_reason)
     return await svc.get_order_for_actor(order_id, actor=user)

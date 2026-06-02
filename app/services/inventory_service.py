@@ -91,10 +91,11 @@ class InventoryService:
             menu_id=order.menu_id,
             menu_name=order.menu_name,
             menu_tags=order.menu_tags,
+            cancel_reason="庫存調整，餐點數量不足",
             quantity=order.quantity,
             pickup_date=target_date,
             status=OrderStatus.cancelled,
             timestamp=int(time.time()),
         )
         await mq_mod.publish("order.cancelled", event.model_dump())
-        await notify_order_cancelled(str(order.id), order.employee_id)
+        await notify_order_cancelled(str(order.id), order.employee_id, "庫存調整，餐點數量不足")

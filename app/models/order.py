@@ -61,6 +61,11 @@ class UpdateOrderRequest(BaseModel):
     status: Optional[OrderStatus] = None
     action: Optional[str] = None
     quantity: Optional[int] = Field(default=None, ge=1)
+    cancel_reason: Optional[str] = None
+
+
+class CancelOrderRequest(BaseModel):
+    cancel_reason: Optional[str] = None
 
 
 class UpdateOrderQuantityRequest(BaseModel):
@@ -83,3 +88,4 @@ class OrderEvent(BaseModel):
     status: OrderStatus = OrderStatus.pending
     timestamp: int
     menu_tags: List[str] = Field(default_factory=list)
+    cancel_reason: Optional[str] = None
