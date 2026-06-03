@@ -114,7 +114,25 @@ jobs:
           script_stop: true
           script: |
             cd "${{ secrets.EC2_PROJECT_DIR }}"
+
             git fetch origin main
             git pull --ff-only origin main
+
+            cat > .env << 'EOF'
+            JWT_SECRET=${{ secrets.JWT_SECRET }}
+            DATABASE_URL=${{ secrets.DATABASE_URL }}
+            REDIS_URL=${{ secrets.REDIS_URL }}
+            RABBITMQ_URL=${{ secrets.RABBITMQ_URL }}
+            TEST_REPORT_DIR=${{ secrets.TEST_REPORT_DIR }}
+            LOGIN_SERVICE_URL=${{ secrets.LOGIN_SERVICE_URL }}
+            NOTIFICATION_SERVICE_URL=${{ secrets.NOTIFICATION_SERVICE_URL }}
+            MENU_SERVICE_URL=${{ secrets.MENU_SERVICE_URL }}
+            ADMIN_USER_ID=${{ secrets.ADMIN_USER_ID }}
+            ADMIN_EMAIL=${{ secrets.ADMIN_EMAIL }}
+            ADMIN_PASSWORD=${{ secrets.ADMIN_PASSWORD }}
+            EOF
+
+            chmod 600 .env
+
             docker compose up -d --build order-service
             docker compose ps order-service

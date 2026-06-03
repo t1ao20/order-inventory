@@ -11,3 +11,19 @@ reports/coverage/
 # Local secrets and infra config - don't commit
 kong.yml
 test.pem
+# Python
+venv/
+env/
+
+# Environment variables
+.env.*
+!.env.example
+
+# Reports / test outputs
+reports/
+htmlcov/
+.coverage
+.pytest_cache/
+
+# Docker / logs
+*.log
