@@ -320,6 +320,20 @@ class OrderService:
             orders = [order for order in orders if order.status.value == status]
         return orders
 
+    async def get_completed_orders_by_vendor_user_id(
+        self,
+        vendor_user_id: int,
+        from_date: Optional[date],
+        to_date: Optional[date],
+    ) -> list[Order]:
+        orders = await self.order_repo.list_by_vendor_user_id_and_status(
+            vendor_user_id,
+            OrderStatus.completed,
+            from_date,
+            to_date,
+        )
+        return await self._overlay_live_statuses(orders)
+
     async def cancel_vendor_order(
         self,
         order_id: UUID,

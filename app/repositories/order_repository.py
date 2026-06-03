@@ -123,6 +123,33 @@ class OrderRepository:
         rows = await pool.fetch(query, *args)
         return [Order(**dict(r)) for r in rows]
 
+    async def list_by_vendor_user_id_and_status(
+        self,
+        vendor_user_id: int,
+        status: OrderStatus,
+        from_date: Optional[date],
+        to_date: Optional[date],
+    ) -> list[Order]:
+        pool = get_pool()
+        query = (
+            "SELECT id, employee_id, vendor_user_id, vendor_id, menu_id, menu_name, menu_tags, "
+            "       factory_zone AS \"factoryZone\", price_snapshot, "
+            "       quantity, total_price, order_date, pickup_date, status, created_at "
+            "FROM orders WHERE vendor_user_id = $1 AND status = $2"
+        )
+        args: list[object] = [vendor_user_id, status.value]
+
+        if from_date is not None:
+            query += f" AND pickup_date >= ${len(args) + 1}"
+            args.append(from_date)
+        if to_date is not None:
+            query += f" AND pickup_date <= ${len(args) + 1}"
+            args.append(to_date)
+
+        query += " ORDER BY pickup_date DESC, created_at DESC"
+        rows = await pool.fetch(query, *args)
+        return [Order(**dict(r)) for r in rows]
+
     async def get_today_order(self, employee_id: int) -> Optional[Order]:
         pool = get_pool()
         row = await pool.fetchrow(

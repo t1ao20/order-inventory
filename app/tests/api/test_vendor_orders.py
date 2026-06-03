@@ -44,6 +44,7 @@ class FakeOrderService:
     def __init__(self):
         self.orders_call = None
         self.vendor_orders_call = None
+        self.completed_vendor_orders_call = None
         self.reject_call = None
 
     async def get_vendor_orders(self, vendor_id: UUID, from_date, to_date, status: Optional[str] = None) -> list[dict]:
@@ -58,6 +59,13 @@ class FakeOrderService:
         return [
             order_payload(order_id=ORDER_UUID, status="confirmed", quantity=1),
             order_payload(order_id=UUID(HISTORY_ORDER_ID), status="cancelled", quantity=2),
+        ]
+
+    async def get_completed_orders_by_vendor_user_id(self, vendor_user_id: int, from_date, to_date) -> list[dict]:
+        self.completed_vendor_orders_call = (vendor_user_id, from_date, to_date)
+        return [
+            order_payload(order_id=ORDER_UUID, status="completed", quantity=1),
+            order_payload(order_id=UUID(HISTORY_ORDER_ID), status="completed", quantity=2),
         ]
 
     async def reject_vendor_order(self, order_id: UUID, vendor_id: UUID, cancel_reason=None) -> dict:
@@ -152,6 +160,39 @@ def test_vendor_can_get_custom_range_and_status():
         assert from_date == days_from_today(-30)
         assert to_date == tw_today()
         assert status == "completed"
+
+
+def test_admin_can_get_completed_orders_by_vendor_user_id():
+    # arrange: an authenticated admin, vendor user id, and completed-order date range
+    with make_client({"user_id": 14, "role": "admin"}) as (client, service, vendor_menu_service):
+        # act: receive a GET /vendor/orders/completed/{vendor_user_id} request
+        response = client.get(
+            "/vendor/orders/completed/37",
+            params={"from": days_from_today(-30).isoformat(), "to": tw_today().isoformat()},
+        )
+
+        # assert: response should only expose the completed-order admin query for the selected vendor user
+        assert response.status_code == 200
+        assert response.json()["status"] == "completed"
+        assert response.json()["vendor_user_id"] == 37
+        assert response.json()["count"] == 2
+        assert [order["status"] for order in response.json()["orders"]] == ["completed", "completed"]
+        assert service.completed_vendor_orders_call == (37, days_from_today(-30), tw_today())
+        assert service.orders_call is None
+        assert vendor_menu_service.current_vendor_call is None
+
+
+def test_vendor_cannot_get_completed_orders_by_vendor_user_id():
+    # arrange: a non-admin vendor
+    with make_client({"user_id": 7, "role": "vendor"}) as (client, service, vendor_menu_service):
+        # act: receive a GET /vendor/orders/completed/{vendor_user_id} request
+        response = client.get("/vendor/orders/completed/37")
+
+        # assert: response should be forbidden and not call services
+        assert response.status_code == 403
+        assert response.json() == {"detail": "Only admins can access completed orders"}
+        assert service.completed_vendor_orders_call is None
+        assert vendor_menu_service.current_vendor_call is None
 
 
 def test_admin_can_get_orders_by_vendor_user_id():

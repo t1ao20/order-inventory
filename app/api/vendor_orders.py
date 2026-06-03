@@ -31,6 +31,11 @@ def require_vendor_or_admin(user: dict) -> None:
         raise HTTPException(status_code=403, detail="Only vendors/admin can access vendor orders")
 
 
+def require_admin(user: dict) -> None:
+    if user["role"] != "admin":
+        raise HTTPException(status_code=403, detail="Only admins can access completed orders")
+
+
 # GET /vendor/orders
 @router.get("")
 async def get_vendor_orders(
@@ -66,6 +71,24 @@ async def get_vendor_orders(
         status=status,
     )
     return {"orders": orders, "count": len(orders), "range": range_value, "status": status}
+
+
+# GET /vendor/orders/completed/{vendor_user_id}
+@router.get("/completed/{vendor_user_id}")
+async def get_completed_orders_by_vendor_user_id(
+    vendor_user_id: int,
+    user: Annotated[dict, Depends(get_current_user)],
+    svc: OrderService = Depends(get_service),
+    from_date: Optional[date] = Query(default=None, alias="from"),
+    to_date: Optional[date] = Query(default=None, alias="to"),
+):
+    require_admin(user)
+    orders = await svc.get_completed_orders_by_vendor_user_id(
+        vendor_user_id=vendor_user_id,
+        from_date=from_date,
+        to_date=to_date,
+    )
+    return {"orders": orders, "count": len(orders), "status": "completed", "vendor_user_id": vendor_user_id}
 
 
 # GET /vendor/orders/vendor/{vendor_user_id}
