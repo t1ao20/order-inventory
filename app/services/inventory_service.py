@@ -91,6 +91,7 @@ class InventoryService:
             menu_id=order.menu_id,
             menu_name=order.menu_name,
             menu_tags=order.menu_tags,
+            factoryZone=order.factoryZone,
             cancel_reason="庫存調整，餐點數量不足",
             quantity=order.quantity,
             pickup_date=target_date,

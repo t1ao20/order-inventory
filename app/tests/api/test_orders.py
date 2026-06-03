@@ -113,6 +113,7 @@ def test_create_order_uses_authenticated_employee():
                 "menu_id": str(MENU_UUID),
                 "quantity": 2,
                 "pickup_date": days_from_today(8).isoformat(),
+                "factoryZone": "A廠",
             },
         )
 
@@ -126,6 +127,7 @@ def test_create_order_uses_authenticated_employee():
         }
         assert employee_id == 9
         assert req.menu_id == MENU_UUID
+        assert req.factoryZone == "A廠"
 
 
 def test_create_order_returns_conflict_when_out_of_stock():
@@ -140,6 +142,7 @@ def test_create_order_returns_conflict_when_out_of_stock():
                 "menu_id": str(MENU_UUID),
                 "quantity": 2,
                 "pickup_date": days_from_today(8).isoformat(),
+                "factoryZone": "A廠",
             },
         )
 

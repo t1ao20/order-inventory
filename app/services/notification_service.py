@@ -39,10 +39,12 @@ def _recipient_user_ids(order: Order) -> list[int]:
 
 def _format_order_details(order_id: str, order: Order) -> list[str]:
     tags = "、".join(order.menu_tags) if order.menu_tags else "無"
+    factory_zone = order.factoryZone or "無"
     return [
         f"訂單編號：{order_id}",
         f"餐點名稱：{order.menu_name}",
         f"餐點標籤：{tags}",
+        f"廠區：{factory_zone}",
         f"數量：{order.quantity}",
         f"單價：{order.price_snapshot}",
         f"總金額：{order.total_price}",

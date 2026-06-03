@@ -48,6 +48,7 @@ class OrderWorker:
                 pickup_date=pickup_date,
                 status=OrderStatus.confirmed,
                 created_at=now,
+                factoryZone=payload.get("factoryZone", ""),
             )
 
             # Write to PostgreSQL

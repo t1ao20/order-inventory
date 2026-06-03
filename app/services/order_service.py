@@ -75,6 +75,7 @@ class OrderService:
             status=OrderStatus.pending,
             created_at=now,
             menu_tags=menu_tags,
+            factoryZone=req.factoryZone,
         )
 
         # Step 3: Cache live order status in Redis (TTL 24h)
@@ -96,6 +97,7 @@ class OrderService:
             status=OrderStatus.pending,
             timestamp=int(now.timestamp()),
             menu_tags=menu_tags,
+            factoryZone=req.factoryZone,
         )
         try:
             await mq_mod.publish(ORDER_CREATED, event.model_dump())
@@ -142,6 +144,7 @@ class OrderService:
             menu_id=order.menu_id,
             menu_name=order.menu_name,
             menu_tags=order.menu_tags,
+            factoryZone=order.factoryZone,
             cancel_reason=reason,
             pickup_date=order.pickup_date.isoformat(),
             timestamp=int(time.time()),
@@ -330,6 +333,7 @@ class OrderService:
             menu_id=order.menu_id,
             menu_name=order.menu_name,
             menu_tags=order.menu_tags,
+            factoryZone=order.factoryZone,
             cancel_reason=reason,
             pickup_date=order.pickup_date.isoformat(),
             timestamp=int(time.time()),
@@ -477,6 +481,7 @@ class OrderService:
             menu_id=order.menu_id,
             menu_name=order.menu_name,
             menu_tags=order.menu_tags,
+            factoryZone=order.factoryZone,
             cancel_reason=reason,
             pickup_date=order.pickup_date.isoformat(),
             timestamp=int(time.time()),

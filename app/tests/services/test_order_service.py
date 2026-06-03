@@ -180,6 +180,7 @@ def test_create_order_raises_conflict_when_out_of_stock(monkeypatch):
         menu_id=MENU_UUID,
         quantity=2,
         pickup_date=days_from_today(8),
+        factoryZone="A廠",
     )
     monkeypatch.setattr(order_service.rdb_mod, "reserve_inventory", lambda menu_id, target_date, quantity: asyncio.sleep(0, result=-1))
 
@@ -200,6 +201,7 @@ def test_create_order_success_persists_pending_state_and_publishes(monkeypatch):
         menu_id=MENU_UUID,
         quantity=2,
         pickup_date=days_from_today(8),
+        factoryZone="A廠",
     )
     rdb = FakeRedis()
     publish_calls = []
@@ -229,6 +231,7 @@ def test_create_order_success_persists_pending_state_and_publishes(monkeypatch):
     assert publish_calls[0][1]["menu_name"] == "Lunch Box"
     assert publish_calls[0][1]["price"] == 120
     assert publish_calls[0][1]["menu_tags"] == ["BEEF", "AMERICAN"]
+    assert publish_calls[0][1]["factoryZone"] == "A廠"
     assert publish_calls[0][1]["quantity"] == 2
     assert publish_calls[0][1]["pickup_date"] == req.pickup_date.isoformat()
     assert reserve_calls == [(MENU_UUID, req.pickup_date.isoformat(), 2)]
@@ -242,6 +245,7 @@ def test_create_order_rolls_back_when_queue_publish_fails(monkeypatch):
         menu_id=MENU_UUID,
         quantity=2,
         pickup_date=days_from_today(8),
+        factoryZone="A廠",
     )
     rdb = FakeRedis()
     incr_calls = []
@@ -275,6 +279,7 @@ def test_create_order_rejects_after_deadline():
         menu_id=MENU_UUID,
         quantity=1,
         pickup_date=days_from_today(8),
+        factoryZone="A廠",
     )
     svc._now = lambda: cutoff_dt(req.pickup_date)
 

@@ -44,6 +44,7 @@ def make_order(order_id: UUID, status: OrderStatus = OrderStatus.confirmed) -> O
         pickup_date=date(2026, 6, 10),
         status=status,
         created_at=datetime(2026, 6, 2, tzinfo=timezone.utc),
+        factoryZone="A廠",
     )
 
 
@@ -86,6 +87,7 @@ def test_notify_order_created_posts_to_employee_and_vendor(monkeypatch):
     assert sent_payloads[0]["title"] == "訂單已建立：招牌烤雞"
     assert "訂單編號：11111111-1111-4111-8111-111111111111" in sent_payloads[0]["content"]
     assert "餐點名稱：招牌烤雞" in sent_payloads[0]["content"]
+    assert "廠區：A廠" in sent_payloads[0]["content"]
     assert "數量：2" in sent_payloads[0]["content"]
 
 
@@ -101,6 +103,7 @@ def test_notify_order_quantity_updated_posts_to_employee_and_vendor(monkeypatch)
     assert sent_payloads[0]["title"] == "訂單數量已更新：招牌烤雞"
     assert "原本數量：1" in sent_payloads[0]["content"]
     assert "更新後數量：2" in sent_payloads[0]["content"]
+    assert "廠區：A廠" in sent_payloads[0]["content"]
     assert "總金額：218" in sent_payloads[0]["content"]
 
 
@@ -116,6 +119,7 @@ def test_notify_order_cancelled_posts_to_employee_and_vendor(monkeypatch):
     assert sent_payloads[0]["title"] == "訂單已取消：招牌烤雞"
     assert "取消原因：今日食材不足" in sent_payloads[0]["content"]
     assert "餐點標籤：BEEF、AMERICAN" in sent_payloads[0]["content"]
+    assert "廠區：A廠" in sent_payloads[0]["content"]
     assert "目前狀態：cancelled" in sent_payloads[0]["content"]
 
 

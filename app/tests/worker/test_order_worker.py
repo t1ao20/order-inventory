@@ -50,6 +50,7 @@ def make_payload():
         "menu_id": "00000000-0000-4000-8000-000000000042",
         "menu_name": "Lunch Box",
         "menu_tags": ["BEEF", "AMERICAN"],
+        "factoryZone": "A廠",
         "price": 120,
         "quantity": 2,
         "pickup_date": "2026-06-10",
@@ -69,6 +70,7 @@ def test_handle_created_writes_order_and_notifies(monkeypatch):
 
     assert str(worker.order_repo.created_order.id) == "11111111-1111-4111-8111-111111111111"
     assert worker.order_repo.created_order.status == "confirmed"
+    assert worker.order_repo.created_order.factoryZone == "A廠"
     assert worker.inventory_repo.decrement_call[2] == 2
     assert rdb.set_calls == [("order:today:11111111-1111-4111-8111-111111111111", "confirmed", 86400)]
     assert notify_calls == ["11111111-1111-4111-8111-111111111111"]

@@ -30,6 +30,7 @@ class Order(BaseModel):
     status: OrderStatus
     created_at: datetime
     menu_tags: List[str] = Field(default_factory=list)
+    factoryZone: str = ""
 
     class Config:
         from_attributes = True
@@ -50,6 +51,7 @@ class PlaceOrderRequest(BaseModel):
     menu_id: UUID
     quantity: int = Field(1, ge=1)
     pickup_date: date
+    factoryZone: str = Field(..., min_length=1)
 
 
 class SetInventoryRequest(BaseModel):
@@ -88,4 +90,5 @@ class OrderEvent(BaseModel):
     status: OrderStatus = OrderStatus.pending
     timestamp: int
     menu_tags: List[str] = Field(default_factory=list)
+    factoryZone: str = ""
     cancel_reason: Optional[str] = None
