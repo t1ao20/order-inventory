@@ -169,7 +169,7 @@ class OrderService:
 
         role = actor["role"]
         user_id = actor["user_id"]
-        if role == "employee" and order.employee_id != user_id:
+        if role in ("employee", "admin") and order.employee_id != user_id:
             raise HTTPException(status_code=403, detail="Not your order")
         if role == "vendor" and order.vendor_user_id != user_id:
             raise HTTPException(status_code=403, detail="Not your vendor order")
@@ -229,6 +229,26 @@ class OrderService:
         order.quantity = quantity
         order.total_price = order.price_snapshot * quantity
         return await self._overlay_live_status(order)
+
+    async def complete_order(self, order_id: UUID, actor: dict) -> Order:
+        order = await self.order_repo.get_by_id(order_id)
+        if not order:
+            raise HTTPException(status_code=404, detail="Order not found")
+
+        role = actor["role"]
+        user_id = actor["user_id"]
+        if role in ("employee", "admin") and order.employee_id != user_id:
+            raise HTTPException(status_code=403, detail="Not your order")
+        if role not in ("employee", "admin"):
+            raise HTTPException(status_code=403, detail="Only employees/admin can complete orders")
+        if order.status == OrderStatus.cancelled:
+            raise HTTPException(status_code=422, detail="Cannot complete cancelled order")
+        if order.status == OrderStatus.completed:
+            raise HTTPException(status_code=422, detail="Already completed")
+
+        await self.order_repo.update_status(order_id, OrderStatus.completed)
+        await self._cache_status(order_id, OrderStatus.completed)
+        return await self.get_order_for_actor(order_id, actor)
     
     # ── Today's Order ──────────────────────────────────────────
     async def get_today_order(self, employee_id: int) -> Order:

@@ -132,3 +132,14 @@ async def cancel_order(
     cancel_reason = req.cancel_reason if req is not None else None
     await svc.cancel_order(order_id, employee_id=user["user_id"], cancel_reason=cancel_reason)
     return await svc.get_order_for_actor(order_id, actor=user)
+
+
+# PATCH /orders/{order_id}/complete
+@router.patch("/{order_id}/complete", response_model=Order)
+async def complete_order(
+    order_id: UUID,
+    user: Annotated[dict, Depends(get_current_user)],
+    svc: OrderService = Depends(get_service),
+):
+    require_employee_or_admin(user)
+    return await svc.complete_order(order_id, actor=user)

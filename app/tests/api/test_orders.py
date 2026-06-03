@@ -46,6 +46,7 @@ class FakeOrderService:
         self.employee_orders_call = None
         self.get_order_call = None
         self.cancel_order_call = None
+        self.complete_order_call = None
         self.update_quantity_call = None
         self.create_order_error = None
 
@@ -81,6 +82,10 @@ class FakeOrderService:
         return updated
     async def cancel_order(self, order_id: UUID, employee_id: int, cancel_reason=None) -> None:
         self.cancel_order_call = (str(order_id), employee_id, cancel_reason)
+
+    async def complete_order(self, order_id: UUID, actor: dict) -> dict:
+        self.complete_order_call = (str(order_id), actor)
+        return order_payload(order_id=order_id, status="completed")
 
     async def reject_vendor_order(self, order_id: UUID, vendor_id: UUID, cancel_reason=None) -> dict:
         raise HTTPException(status_code=500, detail="not used in employee tests")
@@ -325,3 +330,28 @@ def test_employee_can_update_order_quantity_through_patch():
         assert order_id == OTHER_ORDER_ID
         assert employee_id == 1
         assert quantity == 3
+
+
+def test_employee_can_complete_own_order():
+    # arrange: an authenticated employee and a fake order service
+    with make_client({"user_id": 1, "role": "employee"}) as (client, service):
+        # act: receive a PATCH /orders/{order_id}/complete request
+        response = client.patch(f"/orders/{OTHER_ORDER_ID}/complete")
+
+        # assert: response should mark the order completed using the actor context
+        assert response.status_code == 200
+        assert response.json()["id"] == OTHER_ORDER_ID
+        assert response.json()["status"] == "completed"
+        assert service.complete_order_call == (OTHER_ORDER_ID, {"user_id": 1, "role": "employee"})
+
+
+def test_admin_can_complete_order():
+    # arrange: an authenticated admin and a fake order service
+    with make_client({"user_id": 99, "role": "admin"}) as (client, service):
+        # act: receive a PATCH /orders/{order_id}/complete request
+        response = client.patch(f"/orders/{OTHER_ORDER_ID}/complete")
+
+        # assert: admins should be allowed through the route and service handles ownership
+        assert response.status_code == 200
+        assert response.json()["status"] == "completed"
+        assert service.complete_order_call == (OTHER_ORDER_ID, {"user_id": 99, "role": "admin"})

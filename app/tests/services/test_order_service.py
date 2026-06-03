@@ -852,7 +852,7 @@ def test_vendor_update_order_rejects_non_cancel_status():
 
 def test_admin_update_order_cancel_uses_loaded_cancel_path(monkeypatch):
     # arrange: an order service with an order and fake cache/inventory dependencies
-    order = make_order(quantity=2)
+    order = make_order(employee_id=99, quantity=2)
     rdb = FakeRedis()
     svc = OrderService()
     svc.order_repo = FakeOrderRepository(order=order)
@@ -900,11 +900,25 @@ def test_get_order_for_actor_rejects_wrong_employee():
     assert exc_info.value.detail == "Not your order"
 
 
+def test_get_order_for_actor_rejects_wrong_admin():
+    # arrange: an order service with another user's order
+    svc = OrderService()
+    svc.order_repo = FakeOrderRepository(order=make_order(employee_id=1))
+
+    # act: get the order as a different admin
+    with pytest.raises(HTTPException) as exc_info:
+        asyncio.run(svc.get_order_for_actor(ORDER_UUID, {"user_id": 99, "role": "admin"}))
+
+    # assert: admins follow the same ownership rule as employees
+    assert exc_info.value.status_code == 403
+    assert exc_info.value.detail == "Not your order"
+
+
 def test_admin_update_order_can_set_non_cancelled_status(monkeypatch):
     # arrange: an order service with an order and fake Redis cache
     rdb = FakeRedis()
     svc = OrderService()
-    svc.order_repo = FakeOrderRepository(order=make_order())
+    svc.order_repo = FakeOrderRepository(order=make_order(employee_id=99))
     monkeypatch.setattr(order_service.rdb_mod, "get_redis", lambda: rdb)
 
     # act: update the order as admin to completed
@@ -920,6 +934,108 @@ def test_admin_update_order_can_set_non_cancelled_status(monkeypatch):
     assert result.status == OrderStatus.completed
     assert svc.order_repo.update_status_call == (ORDER_ID, OrderStatus.completed)
     assert rdb.set_calls == [(f"order:today:{ORDER_ID}", "completed", 86400)]
+
+
+def test_employee_can_complete_own_order(monkeypatch):
+    # arrange: an order service with an employee-owned order and fake Redis cache
+    rdb = FakeRedis()
+    svc = OrderService()
+    svc.order_repo = FakeOrderRepository(order=make_order(employee_id=1, status=OrderStatus.confirmed))
+    monkeypatch.setattr(order_service.rdb_mod, "get_redis", lambda: rdb)
+
+    # act: complete the order as the owning employee
+    result = asyncio.run(svc.complete_order(ORDER_UUID, actor={"user_id": 1, "role": "employee"}))
+
+    # assert: repository and Redis should receive the completed status
+    assert result.status == OrderStatus.completed
+    assert svc.order_repo.update_status_call == (ORDER_ID, OrderStatus.completed)
+    assert rdb.set_calls == [(f"order:today:{ORDER_ID}", "completed", 86400)]
+
+
+def test_admin_can_complete_own_order(monkeypatch):
+    # arrange: an order service with an admin-owned order and fake Redis cache
+    rdb = FakeRedis()
+    svc = OrderService()
+    svc.order_repo = FakeOrderRepository(order=make_order(employee_id=99, status=OrderStatus.confirmed))
+    monkeypatch.setattr(order_service.rdb_mod, "get_redis", lambda: rdb)
+
+    # act: complete the order as the owning admin
+    result = asyncio.run(svc.complete_order(ORDER_UUID, actor={"user_id": 99, "role": "admin"}))
+
+    # assert: repository and Redis should receive the completed status
+    assert result.status == OrderStatus.completed
+    assert svc.order_repo.update_status_call == (ORDER_ID, OrderStatus.completed)
+    assert rdb.set_calls == [(f"order:today:{ORDER_ID}", "completed", 86400)]
+
+
+def test_complete_order_rejects_wrong_admin():
+    # arrange: an order service with another user's order
+    svc = OrderService()
+    svc.order_repo = FakeOrderRepository(order=make_order(employee_id=1, status=OrderStatus.confirmed))
+
+    # act: complete the order as a different admin
+    with pytest.raises(HTTPException) as exc_info:
+        asyncio.run(svc.complete_order(ORDER_UUID, actor={"user_id": 99, "role": "admin"}))
+
+    # assert: admins follow the same ownership rule as employees
+    assert exc_info.value.status_code == 403
+    assert exc_info.value.detail == "Not your order"
+
+
+def test_complete_order_rejects_wrong_employee():
+    # arrange: an order service with another employee's order
+    svc = OrderService()
+    svc.order_repo = FakeOrderRepository(order=make_order(employee_id=2, status=OrderStatus.confirmed))
+
+    # act: complete the order as a different employee
+    with pytest.raises(HTTPException) as exc_info:
+        asyncio.run(svc.complete_order(ORDER_UUID, actor={"user_id": 1, "role": "employee"}))
+
+    # assert: response should be a 403 ownership error
+    assert exc_info.value.status_code == 403
+    assert exc_info.value.detail == "Not your order"
+
+
+def test_complete_order_rejects_vendor():
+    # arrange: an order service with a vendor-owned order
+    svc = OrderService()
+    svc.order_repo = FakeOrderRepository(order=make_order(vendor_user_id=7, status=OrderStatus.confirmed))
+
+    # act: complete the order as a vendor
+    with pytest.raises(HTTPException) as exc_info:
+        asyncio.run(svc.complete_order(ORDER_UUID, actor={"user_id": 7, "role": "vendor"}))
+
+    # assert: vendors cannot complete orders
+    assert exc_info.value.status_code == 403
+    assert exc_info.value.detail == "Only employees/admin can complete orders"
+
+
+def test_complete_order_rejects_cancelled_order():
+    # arrange: an order service with a cancelled order
+    svc = OrderService()
+    svc.order_repo = FakeOrderRepository(order=make_order(status=OrderStatus.cancelled))
+
+    # act: complete a cancelled order
+    with pytest.raises(HTTPException) as exc_info:
+        asyncio.run(svc.complete_order(ORDER_UUID, actor={"user_id": 1, "role": "employee"}))
+
+    # assert: cancelled orders cannot be completed
+    assert exc_info.value.status_code == 422
+    assert exc_info.value.detail == "Cannot complete cancelled order"
+
+
+def test_complete_order_rejects_already_completed_order():
+    # arrange: an order service with an already completed order
+    svc = OrderService()
+    svc.order_repo = FakeOrderRepository(order=make_order(status=OrderStatus.completed))
+
+    # act: complete again
+    with pytest.raises(HTTPException) as exc_info:
+        asyncio.run(svc.complete_order(ORDER_UUID, actor={"user_id": 1, "role": "employee"}))
+
+    # assert: response should be a 422 already-completed error
+    assert exc_info.value.status_code == 422
+    assert exc_info.value.detail == "Already completed"
 
 
 def test_employee_update_order_can_increase_quantity(monkeypatch):
