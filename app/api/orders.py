@@ -33,7 +33,7 @@ async def create_order(
     user: Annotated[dict, Depends(get_current_user)],
     svc: OrderService = Depends(get_service),
 ):
-    require_employee(user)
+    require_employee_or_admin(user)
     return await svc.create_order(req, employee_id=user["user_id"])
 
 
@@ -47,7 +47,7 @@ async def get_my_orders(
     to_date: Optional[date] = Query(default=None, alias="to"),
     status: Optional[str] = Query(default=None),
 ):
-    require_employee(user)
+    require_employee_or_admin(user)
 
     now = datetime.now(TW_TZ)
     today = now.date()
@@ -116,7 +116,7 @@ async def update_order_quantity(
     user: Annotated[dict, Depends(get_current_user)],
     svc: OrderService = Depends(get_service),
 ):
-    require_employee(user)
+    require_employee_or_admin(user)
     return await svc.update_order_quantity(order_id, employee_id=user["user_id"], quantity=req.quantity)
 
 
@@ -128,7 +128,7 @@ async def cancel_order(
     req: Optional[CancelOrderRequest] = None,
     svc: OrderService = Depends(get_service),
 ):
-    require_employee(user)
+    require_employee_or_admin(user)
     cancel_reason = req.cancel_reason if req is not None else None
     await svc.cancel_order(order_id, employee_id=user["user_id"], cancel_reason=cancel_reason)
     return await svc.get_order_for_actor(order_id, actor=user)
