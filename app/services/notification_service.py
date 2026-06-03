@@ -29,6 +29,14 @@ def _normalize_cancel_reason(cancel_reason: Optional[str]) -> str:
     return reason or DEFAULT_CANCEL_REASON
 
 
+def _recipient_user_ids(order: Order) -> list[int]:
+    recipients = []
+    for user_id in [order.employee_id, order.vendor_user_id]:
+        if user_id not in recipients:
+            recipients.append(user_id)
+    return recipients
+
+
 def _format_order_details(order_id: str, order: Order) -> list[str]:
     tags = "、".join(order.menu_tags) if order.menu_tags else "無"
     return [
@@ -43,19 +51,7 @@ def _format_order_details(order_id: str, order: Order) -> list[str]:
     ]
 
 
-def _build_created_notification(order_id: str, order: Optional[Order]) -> Tuple[str, str]:
-    if order is None:
-        return (
-            f"訂單已建立：{order_id}",
-            "\n".join(
-                [
-                    "您的訂單已建立，系統已同步更新訂單狀態。",
-                    "",
-                    f"訂單編號：{order_id}",
-                ]
-            ),
-        )
-
+def _build_created_notification(order_id: str, order: Order) -> Tuple[str, str]:
     title = f"訂單已建立：{order.menu_name}"
     content = "\n".join(
         [
@@ -69,20 +65,10 @@ def _build_created_notification(order_id: str, order: Optional[Order]) -> Tuple[
 
 def _build_quantity_updated_notification(
     order_id: str,
-    order: Optional[Order],
+    order: Order,
     old_quantity: Optional[int] = None,
     new_quantity: Optional[int] = None,
 ) -> Tuple[str, str]:
-    if order is None:
-        lines = [
-            "您的訂單數量已更新，系統已同步更新訂單狀態。",
-            "",
-            f"訂單編號：{order_id}",
-        ]
-        if new_quantity is not None:
-            lines.append(f"更新後數量：{new_quantity}")
-        return (f"訂單數量已更新：{order_id}", "\n".join(lines))
-
     title = f"訂單數量已更新：{order.menu_name}"
     lines = [
         "您的訂單數量已更新，系統已同步更新訂單狀態。",
@@ -98,23 +84,10 @@ def _build_quantity_updated_notification(
 
 def _build_cancelled_notification(
     order_id: str,
-    order: Optional[Order],
+    order: Order,
     cancel_reason: Optional[str] = None,
 ) -> Tuple[str, str]:
     reason = _normalize_cancel_reason(cancel_reason)
-    if order is None:
-        return (
-            f"訂單已取消：{order_id}",
-            "\n".join(
-                [
-                    "您的訂單已被取消，系統已同步更新訂單狀態。",
-                    "",
-                    f"訂單編號：{order_id}",
-                    f"取消原因：{reason}",
-                ]
-            ),
-        )
-
     title = f"訂單已取消：{order.menu_name}"
     content = "\n".join(
         [
@@ -174,45 +147,54 @@ async def _send_notification(user_id: int, title: str, content: str, log_event: 
     await asyncio.to_thread(_send)
 
 
-async def notify_order_created(order_id: str, user_id: int) -> None:
-    """Send creation notification without breaking main business flow on failure."""
+async def _notify_order(order_id: str, log_event: str, builder) -> None:
     if not settings.NOTIFICATION_SERVICE_URL.strip():
         return
 
     order = await _load_order(order_id)
-    title, content = _build_created_notification(order_id, order)
-    await _send_notification(user_id, title, content, "Created", order_id)
+    if order is None:
+        logger.warning("Skip %s notification because order was not found order_id=%s", log_event, order_id)
+        return
+
+    title, content = builder(order)
+    for user_id in _recipient_user_ids(order):
+        await _send_notification(user_id, title, content, log_event, order_id)
+
+
+async def notify_order_created(order_id: str) -> None:
+    """Send creation notification without breaking main business flow on failure."""
+    await _notify_order(
+        order_id,
+        "Created",
+        lambda order: _build_created_notification(order_id, order),
+    )
 
 
 async def notify_order_quantity_updated(
     order_id: str,
-    user_id: int,
     old_quantity: Optional[int] = None,
     new_quantity: Optional[int] = None,
 ) -> None:
     """Send quantity update notification without breaking main business flow on failure."""
-    if not settings.NOTIFICATION_SERVICE_URL.strip():
-        return
-
-    order = await _load_order(order_id)
-    title, content = _build_quantity_updated_notification(
+    await _notify_order(
         order_id,
-        order,
-        old_quantity=old_quantity,
-        new_quantity=new_quantity,
+        "Quantity updated",
+        lambda order: _build_quantity_updated_notification(
+            order_id,
+            order,
+            old_quantity=old_quantity,
+            new_quantity=new_quantity,
+        ),
     )
-    await _send_notification(user_id, title, content, "Quantity updated", order_id)
 
 
 async def notify_order_cancelled(
     order_id: str,
-    user_id: int,
     cancel_reason: Optional[str] = None,
 ) -> None:
     """Send cancellation notification without breaking main business flow on failure."""
-    if not settings.NOTIFICATION_SERVICE_URL.strip():
-        return
-
-    order = await _load_order(order_id)
-    title, content = _build_cancelled_notification(order_id, order, cancel_reason=cancel_reason)
-    await _send_notification(user_id, title, content, "Cancellation", order_id)
+    await _notify_order(
+        order_id,
+        "Cancellation",
+        lambda order: _build_cancelled_notification(order_id, order, cancel_reason=cancel_reason),
+    )

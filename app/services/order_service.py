@@ -147,7 +147,7 @@ class OrderService:
             timestamp=int(time.time()),
         )
         await mq_mod.publish(ORDER_CANCELLED, event.model_dump())
-        await notify_order_cancelled(str(order_id), order.employee_id, reason)
+        await notify_order_cancelled(str(order_id), reason)
 
     # ── Get Order ──────────────────────────────────────────────
     async def get_order(self, order_id: UUID, employee_id: int) -> Order:
@@ -335,7 +335,7 @@ class OrderService:
             timestamp=int(time.time()),
         )
         await mq_mod.publish(ORDER_CANCELLED, event.model_dump())
-        await notify_order_cancelled(str(order_id), order.employee_id, reason)
+        await notify_order_cancelled(str(order_id), reason)
 
     async def reject_vendor_order(
         self,
@@ -437,7 +437,6 @@ class OrderService:
         )
         await notify_order_quantity_updated(
             str(order.id),
-            order.employee_id,
             old_quantity=old_quantity,
             new_quantity=quantity,
         )
@@ -483,4 +482,4 @@ class OrderService:
             timestamp=int(time.time()),
         )
         await mq_mod.publish(ORDER_CANCELLED, event.model_dump())
-        await notify_order_cancelled(str(order.id), order.employee_id, reason)
+        await notify_order_cancelled(str(order.id), reason)

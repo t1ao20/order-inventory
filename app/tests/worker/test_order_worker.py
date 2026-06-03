@@ -63,7 +63,7 @@ def test_handle_created_writes_order_and_notifies(monkeypatch):
     rdb = FakeRedis()
     notify_calls = []
     monkeypatch.setattr(order_worker.rdb_mod, "get_redis", lambda: rdb)
-    monkeypatch.setattr(order_worker, "notify_order_created", lambda order_id, user_id: asyncio.sleep(0, result=notify_calls.append((order_id, user_id))))
+    monkeypatch.setattr(order_worker, "notify_order_created", lambda order_id: asyncio.sleep(0, result=notify_calls.append(order_id)))
 
     asyncio.run(worker.handle_created(make_payload()))
 
@@ -71,7 +71,7 @@ def test_handle_created_writes_order_and_notifies(monkeypatch):
     assert worker.order_repo.created_order.status == "confirmed"
     assert worker.inventory_repo.decrement_call[2] == 2
     assert rdb.set_calls == [("order:today:11111111-1111-4111-8111-111111111111", "confirmed", 86400)]
-    assert notify_calls == [("11111111-1111-4111-8111-111111111111", 1)]
+    assert notify_calls == ["11111111-1111-4111-8111-111111111111"]
 
 
 def test_handle_created_reraises_write_failure():

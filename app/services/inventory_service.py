@@ -98,4 +98,4 @@ class InventoryService:
             timestamp=int(time.time()),
         )
         await mq_mod.publish("order.cancelled", event.model_dump())
-        await notify_order_cancelled(str(order.id), order.employee_id, "庫存調整，餐點數量不足")
+        await notify_order_cancelled(str(order.id), "庫存調整，餐點數量不足")

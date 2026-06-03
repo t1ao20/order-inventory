@@ -63,7 +63,7 @@ class OrderWorker:
             await rdb.set(rdb_mod.order_status_key(order_id), "confirmed", ex=86400)
 
             logger.info(f"[Worker] Order {order_id} written to DB and confirmed")
-            await notify_order_created(str(order_id), order.employee_id)
+            await notify_order_created(str(order_id))
 
         except Exception as e:
             logger.error(f"[Worker] Failed to process order {order_id}: {e}")

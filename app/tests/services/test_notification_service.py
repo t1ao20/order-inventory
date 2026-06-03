@@ -62,13 +62,18 @@ def setup_notification(monkeypatch, order):
     return calls, fake_repo
 
 
-def test_notify_order_created_posts_detailed_payload(monkeypatch):
+def payloads(calls):
+    return [json.loads(call[0].data.decode("utf-8")) for call in calls]
+
+
+def test_notify_order_created_posts_to_employee_and_vendor(monkeypatch):
     order_id = UUID("11111111-1111-4111-8111-111111111111")
     calls, fake_repo = setup_notification(monkeypatch, make_order(order_id))
 
-    asyncio.run(notification_service.notify_order_created(str(order_id), 1))
+    asyncio.run(notification_service.notify_order_created(str(order_id)))
 
     assert fake_repo.requested_order_id == order_id
+    assert len(calls) == 2
     req, timeout = calls[0]
     assert timeout == 3
     assert req.full_url == "http://notify-service:3002/notifications"
@@ -76,44 +81,45 @@ def test_notify_order_created_posts_detailed_payload(monkeypatch):
     assert req.headers["X-user-id"] == "14"
     assert req.headers["X-user-role"] == "admin"
 
-    payload = json.loads(req.data.decode("utf-8"))
-    assert payload["user_id"] == 1
-    assert payload["title"] == "訂單已建立：招牌烤雞"
-    assert "訂單編號：11111111-1111-4111-8111-111111111111" in payload["content"]
-    assert "餐點名稱：招牌烤雞" in payload["content"]
-    assert "數量：2" in payload["content"]
+    sent_payloads = payloads(calls)
+    assert [payload["user_id"] for payload in sent_payloads] == [1, 37]
+    assert sent_payloads[0]["title"] == "訂單已建立：招牌烤雞"
+    assert "訂單編號：11111111-1111-4111-8111-111111111111" in sent_payloads[0]["content"]
+    assert "餐點名稱：招牌烤雞" in sent_payloads[0]["content"]
+    assert "數量：2" in sent_payloads[0]["content"]
 
 
-def test_notify_order_quantity_updated_posts_detailed_payload(monkeypatch):
+def test_notify_order_quantity_updated_posts_to_employee_and_vendor(monkeypatch):
     order_id = UUID("11111111-1111-4111-8111-111111111111")
     calls, fake_repo = setup_notification(monkeypatch, make_order(order_id))
 
-    asyncio.run(notification_service.notify_order_quantity_updated(str(order_id), 1, old_quantity=1, new_quantity=2))
+    asyncio.run(notification_service.notify_order_quantity_updated(str(order_id), old_quantity=1, new_quantity=2))
 
     assert fake_repo.requested_order_id == order_id
-    payload = json.loads(calls[0][0].data.decode("utf-8"))
-    assert payload["title"] == "訂單數量已更新：招牌烤雞"
-    assert "原本數量：1" in payload["content"]
-    assert "更新後數量：2" in payload["content"]
-    assert "總金額：218" in payload["content"]
+    sent_payloads = payloads(calls)
+    assert [payload["user_id"] for payload in sent_payloads] == [1, 37]
+    assert sent_payloads[0]["title"] == "訂單數量已更新：招牌烤雞"
+    assert "原本數量：1" in sent_payloads[0]["content"]
+    assert "更新後數量：2" in sent_payloads[0]["content"]
+    assert "總金額：218" in sent_payloads[0]["content"]
 
 
-def test_notify_order_cancelled_posts_detailed_payload(monkeypatch):
+def test_notify_order_cancelled_posts_to_employee_and_vendor(monkeypatch):
     order_id = UUID("11111111-1111-4111-8111-111111111111")
     calls, fake_repo = setup_notification(monkeypatch, make_order(order_id, status=OrderStatus.cancelled))
 
-    asyncio.run(notification_service.notify_order_cancelled(str(order_id), 1, "今日食材不足"))
+    asyncio.run(notification_service.notify_order_cancelled(str(order_id), "今日食材不足"))
 
     assert fake_repo.requested_order_id == order_id
-    payload = json.loads(calls[0][0].data.decode("utf-8"))
-    assert payload["user_id"] == 1
-    assert payload["title"] == "訂單已取消：招牌烤雞"
-    assert "取消原因：今日食材不足" in payload["content"]
-    assert "餐點標籤：BEEF、AMERICAN" in payload["content"]
-    assert "目前狀態：cancelled" in payload["content"]
+    sent_payloads = payloads(calls)
+    assert [payload["user_id"] for payload in sent_payloads] == [1, 37]
+    assert sent_payloads[0]["title"] == "訂單已取消：招牌烤雞"
+    assert "取消原因：今日食材不足" in sent_payloads[0]["content"]
+    assert "餐點標籤：BEEF、AMERICAN" in sent_payloads[0]["content"]
+    assert "目前狀態：cancelled" in sent_payloads[0]["content"]
 
 
-def test_notify_order_cancelled_falls_back_when_order_cannot_be_loaded(monkeypatch):
+def test_notify_order_cancelled_skips_when_order_cannot_be_loaded(monkeypatch):
     calls = []
 
     def fake_urlopen(req, timeout=0):
@@ -124,13 +130,9 @@ def test_notify_order_cancelled_falls_back_when_order_cannot_be_loaded(monkeypat
     monkeypatch.setattr(notification_service.settings, "ADMIN_USER_ID", 14)
     monkeypatch.setattr(notification_service.request, "urlopen", fake_urlopen)
 
-    asyncio.run(notification_service.notify_order_cancelled("abc-order", 1))
+    asyncio.run(notification_service.notify_order_cancelled("abc-order"))
 
-    payload = json.loads(calls[0][0].data.decode("utf-8"))
-    assert payload["user_id"] == 1
-    assert payload["title"] == "訂單已取消：abc-order"
-    assert "訂單編號：abc-order" in payload["content"]
-    assert "取消原因：商家未提供取消原因" in payload["content"]
+    assert calls == []
 
 
 def test_notify_order_cancelled_noop_without_base_url(monkeypatch):
@@ -143,6 +145,6 @@ def test_notify_order_cancelled_noop_without_base_url(monkeypatch):
     monkeypatch.setattr(notification_service.settings, "NOTIFICATION_SERVICE_URL", "")
     monkeypatch.setattr(notification_service.request, "urlopen", fake_urlopen)
 
-    asyncio.run(notification_service.notify_order_cancelled("abc-order", 1))
+    asyncio.run(notification_service.notify_order_cancelled("abc-order"))
 
     assert called["value"] is False
